@@ -414,10 +414,10 @@ function App() {
 
   /* ────────────────────────────── RENDER ────────────────────────────── */
   return (
-    <div className="min-h-screen flex items-stretch bg-white font-sans">
+    <div className="min-h-screen flex flex-col lg:flex-row overflow-y-auto bg-white font-sans">
 
       {/* ══════════════════ LEFT PANEL — Light Venn (reference style) ══════════════════ */}
-      <div className="flex-1 flex flex-col bg-white relative overflow-hidden">
+      <div className="flex-1 flex flex-col bg-white relative min-h-[60vh] lg:min-h-0">
 
         {/* Header — title + description stacked, centred */}
         <header className="relative z-10 flex flex-col items-center text-center px-8 pt-8 pb-2">
@@ -560,7 +560,7 @@ function App() {
       </div>
 
       {/* ══════════════════ RIGHT PANEL — Smart Panel ══════════════════ */}
-      <div className="w-full max-w-sm bg-white flex flex-col shadow-2xl shadow-black/20 relative z-10">
+      <div className="w-full lg:max-w-sm bg-white flex flex-col shadow-none lg:shadow-2xl lg:shadow-black/20 border-t border-slate-100 lg:border-t-0 relative z-10">
 
         {/* Panel header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
