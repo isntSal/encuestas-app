@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 // Inicializar cliente Supabase con variables de entorno de Vite
@@ -36,6 +36,49 @@ function App() {
   const [status, setStatus] = useState({ type: '', message: '' });
   const [report, setReport] = useState([]); // Reportes de validación matemática
   const [deducedFields, setDeducedFields] = useState([]); // Campos auto-completados por el algoritmo
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const fetchHistory = async () => {
+    if (!supabase) return;
+    setLoadingHistory(true);
+    const { data, error } = await supabase
+      .from('problemas_conjuntos')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10);
+    if (!error && data) {
+      setHistory(data);
+    }
+    setLoadingHistory(false);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchHistory();
+    }
+  }, [activeTab]);
+
+  const loadSavedSurvey = (survey) => {
+    setSurveyMeta({ title: survey.title || '', description: survey.description || '' });
+    setVarNames({ A: survey.var_a_name || '', B: survey.var_b_name || '', C: survey.var_c_name || '' });
+    setInputs({
+      U: survey.universe != null ? String(survey.universe) : '',
+      none: survey.none != null ? String(survey.none) : '',
+      totalA: survey.total_a != null ? String(survey.total_a) : '',
+      totalB: survey.total_b != null ? String(survey.total_b) : '',
+      totalC: survey.total_c != null ? String(survey.total_c) : '',
+      intAB: survey.intersection_ab != null ? String(survey.intersection_ab + (survey.intersection_abc || 0)) : '',
+      intAC: survey.intersection_ac != null ? String(survey.intersection_ac + (survey.intersection_abc || 0)) : '',
+      intBC: survey.intersection_bc != null ? String(survey.intersection_bc + (survey.intersection_abc || 0)) : '',
+      triple: survey.intersection_abc != null ? String(survey.intersection_abc) : ''
+    });
+    setReport([]);
+    setDeducedFields([]);
+    setActiveTab('data');
+    setStatus({ type: 'success', message: '¡Encuesta cargada exitosamente!' });
+    setTimeout(() => setStatus({ type: '', message: '' }), 3000);
+  };
 
   // Álgebra de Conjuntos (Cálculos dinámicos)
   const val = (key) => Number(inputs[key]) || 0;
@@ -376,16 +419,54 @@ function App() {
             >
               Definir Nombres
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('data')}
               className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'data' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               Totales del Problema
             </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'history' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Cargar Historial
+            </button>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-            {activeTab === 'names' ? (
+            {activeTab === 'history' ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="font-black text-slate-800 text-lg">Encuestas Guardadas</h4>
+                  <button onClick={fetchHistory} className="text-sm font-bold text-blue-600 hover:text-blue-800 transition-colors flex items-center gap-1">
+                    <span>↻</span> Refrescar
+                  </button>
+                </div>
+                
+                {loadingHistory ? (
+                  <div className="p-8 text-center text-slate-500 font-medium animate-pulse">Cargando base de datos...</div>
+                ) : history.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500 font-medium bg-slate-50 rounded-2xl border border-slate-200">
+                    No hay encuestas guardadas aún.
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    {history.map((survey) => (
+                      <div key={survey.id} className="p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-shadow cursor-pointer group" onClick={() => loadSavedSurvey(survey)}>
+                        <h5 className="font-bold text-slate-800 mb-1 group-hover:text-blue-600 transition-colors">{survey.title || 'Encuesta sin título'}</h5>
+                        <p className="text-xs text-slate-500 mb-2 truncate">{survey.description || 'Sin descripción'}</p>
+                        <div className="flex gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <span className="bg-slate-100 px-2 py-1 rounded">V: {survey.universe || 0}</span>
+                          <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded">{survey.var_a_name || 'A'}</span>
+                          <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded">{survey.var_b_name || 'B'}</span>
+                          <span className="bg-slate-100 text-slate-700 px-2 py-1 rounded">{survey.var_c_name || 'C'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : activeTab === 'names' ? (
               <div className="space-y-4">
                 <div className="flex flex-col mb-4 bg-slate-100/50 p-5 rounded-2xl border border-slate-200">
                   <div className="flex items-center gap-2 mb-4">
