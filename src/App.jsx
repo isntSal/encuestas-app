@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import Groq from "groq-sdk";
+
+// Inicializamos Groq fuera del componente para no recrearlo en cada render
+const groq = new Groq({
+  apiKey: import.meta.env.VITE_GROQ_API_KEY,
+  dangerouslyAllowBrowser: true // Requerido para ejecutar la API directamente desde React
+});
 
 // Inicializar cliente Supabase con variables de entorno de Vite
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
@@ -94,6 +101,166 @@ function App() {
   const [deducedFields, setDeducedFields] = useState([]); // Campos auto-completados por el algoritmo
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisResults, setAnalysisResults] = useState(null); // Resultados extendidos de la IA
+
+  // ─── IA: Procesar descripción con Groq ───
+  const handleAiProcess = async () => {
+    if (!surveyMeta.description) {
+      alert("Por favor, ingresa el enunciado del problema en la descripción.");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAnalysisResults(null); // Limpiar resultados previos
+    setStatus({ type: 'loading', message: 'Analizando con IA...' });
+
+    try {
+      const completion = await groq.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content: `Eres un motor de extracción estructurada para problemas de teoría de conjuntos. Analiza el enunciado en DOS CAPAS ESTRICTAS y devuelve ÚNICAMENTE un objeto JSON en texto plano.
+
+REGLAS ABSOLUTAS:
+1. Devuelve SOLO el JSON. NADA MÁS. Sin texto antes ni después.
+2. PROHIBIDO usar bloques markdown (\`\`\`json o \`\`\`). Solo texto plano.
+3. NO resuelvas el problema. Solo extrae y clasifica.
+
+═══ CAPA 1: EXTRACCIÓN DE HECHOS CONFIRMADOS ═══
+Identifica TODOS los valores numéricos explícitos del enunciado y asígnalos a su clave correcta usando este DICCIONARIO SEMÁNTICO ESTRICTO:
+
+DICCIONARIO DE MAPEO (obligatorio):
+- "encuestados", "personas", "total de la muestra", "universo" → U
+- "prefieren A", "eligen A", "consumen A", "practican A" → totalA
+- "prefieren B", "eligen B", "consumen B", "practican B" → totalB  
+- "prefieren C", "eligen C", "consumen C", "practican C" → totalC
+- "ambos A y B", "A y B simultáneamente", "A y B a la vez" → intAB
+- "ambos A y C", "A y C simultáneamente" → intAC
+- "ambos B y C", "B y C simultáneamente" → intBC
+- "los tres", "las tres opciones", "los tres simultáneamente", "todas las categorías", "A, B y C a la vez" → triple
+- "ninguno de los tres", "ninguna opción", "no pertenecen a ninguno", "fuera de los grupos", "no eligieron ninguno" → none
+
+REGLA ANTI-PROXIMIDAD: Lee cada oración COMPLETA antes de asignar. Un número pertenece a la frase que lo contiene semánticamente, NO al sustantivo más cercano.
+
+═══ CAPA 2: IDENTIFICACIÓN DE LA INCÓGNITA ═══
+PRINCIPIO DE EXCLUSIÓN MUTUA: Una variable que ya recibió un valor numérico en Capa 1 tiene PROHIBIDO ser la incógnita. La incógnita DEBE ser una variable que quedó sin valor.
+
+Claves válidas para incógnitas:
+- onlyA, onlyB, onlyC = solo pertenecen a un grupo exclusivamente
+- excAB, excAC, excBC = exactamente en esos dos pero no en el tercero
+- triple = en los tres grupos
+- none = en ningún grupo
+- unionTotal = en al menos un grupo
+- U, totalA, totalB, totalC, intAB, intAC, intBC = si no fueron dados
+
+═══ ESTRUCTURA JSON DE SALIDA ═══
+{
+  "hechos_confirmados": {
+    "U": <número>,
+    "totalA": <número>,
+    ...solo las claves que tienen valor numérico explícito en el texto
+  },
+  "variables_nulas": ["triple", "onlyA", ...],
+  "incognita_objetivo": "triple",
+  "nombres_conjuntos": {
+    "A": "Nombre del primer grupo",
+    "B": "Nombre del segundo grupo",
+    "C": "Nombre del tercer grupo"
+  },
+  "analisis_enunciado": {
+    "objetivo": "Qué busca resolver el problema",
+    "hallazgos": ["Dato clave 1", "Dato clave 2"],
+    "preguntas_detectadas": [
+      {"pregunta": "Texto literal de la pregunta", "incognita": "clave_de_variable"}
+    ]
+  }
+}
+
+VALIDACIÓN FINAL antes de responder:
+- ¿Cada valor en hechos_confirmados aparece LITERALMENTE como número en el texto? Si no, elimínalo.
+- ¿La incognita_objetivo está ausente de hechos_confirmados? Si no, corrígelo.
+- ¿Las claves en hechos_confirmados son del set {U, totalA, totalB, totalC, intAB, intAC, intBC, triple, none}? Si no, reclasifica.`
+          },
+          {
+            role: "user",
+            content: surveyMeta.description
+          }
+        ],
+        model: "llama-3.1-8b-instant",
+        temperature: 0
+      });
+
+      // Limpieza defensiva: purgar markdown residual
+      const rawContent = completion.choices[0].message.content;
+      const cleanedContent = rawContent
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim();
+
+      console.log("Respuesta cruda de Groq:", rawContent);
+      const parsed = JSON.parse(cleanedContent);
+      console.log("Datos parseados:", parsed);
+
+      // ─── Mapeo desde nueva estructura (con fallback a la vieja) ───
+      const confirmedFacts = parsed.hechos_confirmados || parsed.datos_matriz || parsed;
+
+      // Poblar inputs: hechos confirmados → string, todo lo demás → ''
+      const inputKeys = ['U', 'totalA', 'totalB', 'totalC', 'intAB', 'intAC', 'intBC', 'triple', 'none'];
+      setInputs(prev => {
+        const updated = { ...prev };
+        inputKeys.forEach(key => {
+          if (confirmedFacts[key] != null) {
+            updated[key] = String(confirmedFacts[key]);
+          } else {
+            updated[key] = '';
+          }
+        });
+        return updated;
+      });
+
+      // Guardar resultados del análisis para el panel de UI
+      if (parsed.analisis_enunciado) {
+        // Inyectar la incógnita objetivo como primera pregunta si no está ya
+        const analysis = { ...parsed.analisis_enunciado };
+        if (parsed.incognita_objetivo && (!analysis.preguntas_detectadas || analysis.preguntas_detectadas.length === 0)) {
+          analysis.preguntas_detectadas = [{
+            pregunta: analysis.objetivo || '¿Cuál es el valor buscado?',
+            incognita: parsed.incognita_objetivo
+          }];
+        }
+        setAnalysisResults(analysis);
+      }
+
+      // Autocompletar nombres de conjuntos
+      if (parsed.nombres_conjuntos) {
+        const nc = parsed.nombres_conjuntos;
+        setVarNames(prev => ({
+          A: nc.A || prev.A,
+          B: nc.B || prev.B,
+          C: nc.C || prev.C
+        }));
+      }
+
+      setDeducedFields([]);
+      setActiveTab('data');
+
+      // Log de diagnóstico
+      if (parsed.incognita_objetivo) {
+        console.log(`🎯 Incógnita objetivo: ${parsed.incognita_objetivo}`);
+        console.log(`📋 Variables nulas: ${(parsed.variables_nulas || []).join(', ')}`);
+      }
+
+      setStatus({ type: 'success', message: '¡Análisis completado por la IA!' });
+      setTimeout(() => setStatus({ type: '', message: '' }), 4000);
+
+    } catch (error) {
+      console.error("Fallo en la inferencia:", error);
+      setStatus({ type: 'error', message: 'Error al contactar con la IA. Revisa la consola.' });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const fetchHistory = async () => {
     if (!supabase) return;
@@ -165,6 +332,18 @@ function App() {
   const allInputKeys = ['U', 'none', 'totalA', 'totalB', 'totalC', 'intAB', 'intAC', 'intBC', 'triple'];
   const filledCount = allInputKeys.filter(k => inputs[k] !== '' && inputs[k] !== undefined).length;
   const progressPct = Math.round((filledCount / allInputKeys.length) * 100);
+
+  // Mapa de valores calculados para resolver incógnitas del panel de IA
+  const computedValues = {
+    onlyA, onlyB, onlyC,
+    excAB, excAC, excBC,
+    triple, none,
+    unionTotal,
+    U, totalA, totalB, totalC,
+    intAB, intAC, intBC
+  };
+
+
 
   const getDisplayValue = (rawValue) => {
     if (hoveredRegion !== null && U > 0) {
@@ -557,6 +736,98 @@ function App() {
             </div>
           )}
         </div>
+
+        {/* ── AI Analysis Results Panel ── */}
+        {analysisResults && (
+          <div className="w-full max-w-lg mt-6 fade-in">
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              {/* Panel header */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z" />
+                      <circle cx="12" cy="15" r="2" />
+                    </svg>
+                  </span>
+                  <h3 className="font-black text-slate-800 text-sm tracking-tight">Análisis del Problema</h3>
+                </div>
+                <button
+                  onClick={() => setAnalysisResults(null)}
+                  className="text-slate-300 hover:text-slate-500 transition-colors"
+                  title="Cerrar panel"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Objetivo */}
+              {analysisResults.objetivo && (
+                <div className="mb-4">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Objetivo</p>
+                  <p className="text-sm text-slate-700 font-medium leading-relaxed">{analysisResults.objetivo}</p>
+                </div>
+              )}
+
+              {/* Hallazgos */}
+              {analysisResults.hallazgos && analysisResults.hallazgos.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Datos Identificados</p>
+                  <ul className="space-y-1.5">
+                    {analysisResults.hallazgos.map((h, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
+                        <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5 text-xs font-black">{i + 1}</span>
+                        {h}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Preguntas detectadas */}
+              {analysisResults.preguntas_detectadas && analysisResults.preguntas_detectadas.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Preguntas del Problema</p>
+                  <div className="space-y-2">
+                    {analysisResults.preguntas_detectadas.map((q, i) => {
+                      const resolvedValue = q.incognita && computedValues[q.incognita];
+                      const hasData = filledCount >= 2;
+                      return (
+                        <div key={i} className="flex items-start gap-2 px-3 py-2.5 bg-indigo-50/50 border border-indigo-100 rounded-xl">
+                          <span className="text-indigo-500 shrink-0 mt-0.5">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                            </svg>
+                          </span>
+                          <div className="flex-1">
+                            <p className="text-sm text-slate-700 font-semibold">{q.pregunta}</p>
+                            {q.incognita && (
+                              <div className="flex items-center gap-2 mt-1.5">
+                                {hasData && resolvedValue !== undefined && resolvedValue !== null ? (
+                                  <span className="inline-flex items-center gap-1 text-xs font-black text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-lg">
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                                    R = {resolvedValue}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                    ⏳ Pendiente de cálculo
+                                  </span>
+                                )}
+                                <span className="text-[9px] font-mono text-slate-300">{q.incognita}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ══════════════════ RIGHT PANEL — Smart Panel ══════════════════ */}
@@ -621,6 +892,19 @@ function App() {
                   onChange={e => setSurveyMeta(prev => ({ ...prev, description: e.target.value }))}
                   className="w-full px-3 py-2.5 border border-slate-200 bg-white text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-teal-400 focus:outline-none placeholder-slate-300 shadow-sm resize-none"
                 />
+                <div className="flex justify-end mt-3">
+                  <button
+                    onClick={handleAiProcess}
+                    disabled={isAnalyzing}
+                    className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 shadow-sm
+        ${isAnalyzing
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
+                      }`}
+                  >
+                    {isAnalyzing ? "Analizando..." : " Solución del ejercicio"}
+                  </button>
+                </div>
               </div>
 
               {[
