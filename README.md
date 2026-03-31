@@ -1,2 +1,2 @@
-# Dizque una app
+# :o
 
