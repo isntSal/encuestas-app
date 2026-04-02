@@ -886,8 +886,8 @@ VALIDACIÓN FINAL antes de responder:
                 />
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Descripción</label>
                 <textarea
-                  rows="2"
-                  placeholder="Ej: Estudio sobre preferencias de postres..."
+                  rows="5"
+                  placeholder="Ej: En una encuesta a 150 personas, 80 prefieren A, 70 prefieren B, 60 prefieren C, 30 eligen A y B..."
                   value={surveyMeta.description}
                   onChange={e => setSurveyMeta(prev => ({ ...prev, description: e.target.value }))}
                   className="w-full px-3 py-2.5 border border-slate-200 bg-white text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-teal-400 focus:outline-none placeholder-slate-300 shadow-sm resize-none"
@@ -924,11 +924,6 @@ VALIDACIÓN FINAL antes de responder:
                   />
                 </div>
               ))}
-
-              <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-xs text-blue-700 font-medium flex gap-2 items-start">
-                <span className="shrink-0 mt-0.5"><IconInfo /></span>
-                Redacte los nombres de las variables para personalizar los eventos.
-              </div>
             </div>
           )}
 
@@ -1123,30 +1118,17 @@ VALIDACIÓN FINAL antes de responder:
           )}
 
           {activeTab === 'data' && (
-            <>
-              <button
-                id="btn-validate"
-                onClick={handleValidate}
-                className="w-full py-3.5 bg-teal-500 hover:bg-teal-600 active:scale-[0.98] text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-teal-500/30"
-              >
-                <IconCheck /> Calcular y Verificar
-              </button>
-              <button
-                id="btn-save"
-                onClick={handleSave}
-                disabled={status.type === 'loading'}
-                className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-slate-900/20 disabled:opacity-60"
-              >
-                <IconSave />
-                {status.type === 'loading' ? 'Guardando...' : 'Guardar encuesta'}
-              </button>
-            </>
+            <button
+              id="btn-save"
+              onClick={handleSave}
+              disabled={status.type === 'loading'}
+              className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-slate-900/20 disabled:opacity-60"
+            >
+              <IconSave />
+              {status.type === 'loading' ? 'Guardando...' : 'Guardar encuesta'}
+            </button>
           )}
 
-          {/* Info chip */}
-          <p className="text-center text-[10px] text-slate-300 font-medium pt-1 flex items-center justify-center gap-1">
-            <IconInfo /> meow
-          </p>
         </div>
 
       </div>
