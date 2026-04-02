@@ -629,16 +629,18 @@ VALIDACIÓN FINAL antes de responder:
           )}
         </header>
 
-        {/* Total label */}
-        <p className="relative z-10 text-center text-slate-400 text-sm font-semibold tracking-widest uppercase mt-2 mb-2">
-          Total: <span className="text-slate-700 font-black text-base">{U}</span>
-        </p>
 
         {/* SVG Diagram area */}
         <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 pb-8">
 
           {/* SVG wrapper — relative so labels can be absolute */}
           <div className="relative w-full max-w-lg">
+
+            {/* Total badge — above Variable B, right side */}
+            <span className="absolute top-[18%] -right-4 z-10 flex items-baseline gap-1.5 bg-white/80 border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm backdrop-blur-sm">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total</span>
+              <span className="text-lg font-black text-slate-700 leading-none">{U}</span>
+            </span>
 
             {/* Variable A — left label, slightly outside the circle */}
             <span className="absolute -left-6 top-[38%] -translate-y-1/2 text-slate-700 text-sm font-black leading-tight">
@@ -886,7 +888,7 @@ VALIDACIÓN FINAL antes de responder:
                 />
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Descripción</label>
                 <textarea
-                  rows="5"
+                  rows="7"
                   placeholder="Ej: En una encuesta a 150 personas, 80 prefieren A, 70 prefieren B, 60 prefieren C, 30 eligen A y B..."
                   value={surveyMeta.description}
                   onChange={e => setSurveyMeta(prev => ({ ...prev, description: e.target.value }))}
@@ -906,24 +908,6 @@ VALIDACIÓN FINAL antes de responder:
                   </button>
                 </div>
               </div>
-
-              {[
-                { key: 'A', color: 'blue', label: 'Variable A', ring: 'focus:ring-blue-400' },
-                { key: 'B', color: 'emerald', label: 'Variable B', ring: 'focus:ring-emerald-400' },
-                { key: 'C', color: 'slate', label: 'Variable C', ring: 'focus:ring-slate-400' },
-              ].map(v => (
-                <div key={v.key} className="flex flex-col gap-1">
-                  <label className={`text-xs font-black uppercase tracking-widest text-${v.color}-600`}>{v.label}</label>
-                  <input
-                    type="text"
-                    maxLength="20"
-                    placeholder={`Nombre para la variable ${v.key}`}
-                    value={varNames[v.key]}
-                    onChange={e => handleNameChange(v.key, e.target.value)}
-                    className={`w-full px-3 py-2.5 border border-slate-200 bg-white text-slate-900 font-semibold rounded-xl text-sm ${v.ring} focus:outline-none placeholder-slate-300 shadow-sm`}
-                  />
-                </div>
-              ))}
             </div>
           )}
 
