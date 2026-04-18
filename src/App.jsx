@@ -154,8 +154,6 @@ function App() {
   const [status, setStatus] = useState({ type: '', message: '' });
   const [report, setReport] = useState([]);           // Reportes de validación matemática
   const [deducedFields, setDeducedFields] = useState([]); // Campos auto-completados por el algoritmo
-  const [history, setHistory] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResults, setAnalysisResults] = useState(null); // Resultados extendidos de la IA
 
@@ -178,6 +176,58 @@ function App() {
     if (tipo === 'si_no') return ['Sí', 'No'];
     if (tipo === 'valoracion') return ['1 ★', '2 ★', '3 ★', '4 ★', '5 ★'];
     return custom.filter(o => o.trim() !== '').slice(0, 4);
+  };
+
+  // ─── Historial de encuestas generales ───
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const fetchHistory = async () => {
+    if (!supabase) return;
+    setLoadingHistory(true);
+    const { data } = await supabase
+      .from('encuestas_generales')
+      .select('id, titulo, descripcion, pregunta, tipo, opciones, activa, created_at')
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (data) setHistory(data);
+    setLoadingHistory(false);
+  };
+
+  // Cargar historial al montar y cuando se publica una encuesta nueva
+  useEffect(() => { fetchHistory(); }, []);
+  useEffect(() => { if (publishedSurvey?.id) fetchHistory(); }, [publishedSurvey?.id]);
+
+  const loadSavedSurvey = (survey) => {
+    // Restaura la encuesta en el formulario y activa el seguimiento de resultados
+    setGeneralSurvey({
+      titulo: survey.titulo,
+      descripcion: survey.descripcion || '',
+      pregunta: survey.pregunta,
+      tipo: survey.tipo,
+      opcionesCustom: Array.isArray(survey.opciones) ? survey.opciones : ['Opción A', 'Opción B', 'Opción C'],
+    });
+    const surveyUrl = `${window.location.origin}/survey/${survey.id}`;
+    setPublishedSurvey({ id: survey.id, url: surveyUrl });
+    setSurveyResults({});
+    setActiveTab('nueva'); // volver al tab de creación para ver el panel y el gráfico
+    setStatus({ type: 'success', message: `Monitoreando: ${survey.titulo}` });
+    setTimeout(() => setStatus({ type: '', message: '' }), 3500);
+  };
+
+  const handleDeleteGeneralSurvey = async (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm('¿Eliminar esta encuesta permanentemente? Las respuestas también se eliminarán.')) return;
+    setStatus({ type: 'loading', message: 'Eliminando encuesta...' });
+    const { error } = await supabase.from('encuestas_generales').delete().eq('id', id);
+    if (error) {
+      setStatus({ type: 'error', message: `Error al eliminar: ${error.message}` });
+    } else {
+      setHistory(prev => prev.filter(s => s.id !== id));
+      if (publishedSurvey?.id === id) { setPublishedSurvey(null); setSurveyResults({}); }
+      setStatus({ type: 'success', message: 'Encuesta eliminada.' });
+      setTimeout(() => setStatus({ type: '', message: '' }), 3000);
+    }
   };
 
   // ─── Polling de resultados en tiempo real ───
@@ -396,46 +446,6 @@ VALIDACIÓN FINAL antes de responder:
     }
   };
 
-  const fetchHistory = async () => {
-    if (!supabase) return;
-    setLoadingHistory(true);
-    const { data, error } = await supabase
-      .from('problemas_conjuntos')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(10);
-    if (!error && data) {
-      setHistory(data);
-    }
-    setLoadingHistory(false);
-  };
-
-  useEffect(() => {
-    if (activeTab === 'history') {
-      fetchHistory();
-    }
-  }, [activeTab]);
-
-  const loadSavedSurvey = (survey) => {
-    setSurveyMeta({ title: survey.title || '', description: survey.description || '' });
-    setVarNames({ A: survey.var_a_name || '', B: survey.var_b_name || '', C: survey.var_c_name || '' });
-    setInputs({
-      U: survey.universe != null ? String(survey.universe) : '',
-      none: survey.none != null ? String(survey.none) : '',
-      totalA: survey.total_a != null ? String(survey.total_a) : '',
-      totalB: survey.total_b != null ? String(survey.total_b) : '',
-      totalC: survey.total_c != null ? String(survey.total_c) : '',
-      intAB: survey.intersection_ab != null ? String(survey.intersection_ab + (survey.intersection_abc || 0)) : '',
-      intAC: survey.intersection_ac != null ? String(survey.intersection_ac + (survey.intersection_abc || 0)) : '',
-      intBC: survey.intersection_bc != null ? String(survey.intersection_bc + (survey.intersection_abc || 0)) : '',
-      triple: survey.intersection_abc != null ? String(survey.intersection_abc) : ''
-    });
-    setReport([]);
-    setDeducedFields([]);
-    setActiveTab('data');
-    setStatus({ type: 'success', message: '¡Encuesta cargada exitosamente!' });
-    setTimeout(() => setStatus({ type: '', message: '' }), 3000);
-  };
 
   // ─── Álgebra de Conjuntos (Cálculos dinámicos) ───
   const val = (key) => Number(inputs[key]) || 0;
@@ -706,25 +716,6 @@ VALIDACIÓN FINAL antes de responder:
     }
   };
 
-  const handleDeleteSurvey = async (id, e) => {
-    e.stopPropagation();
-    if (!window.confirm('¿Eliminar esta encuesta permanentemente?')) return;
-
-    setStatus({ type: 'loading', message: 'Eliminando encuesta...' });
-
-    const { error } = await supabase
-      .from('problemas_conjuntos')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      setStatus({ type: 'error', message: `Error al eliminar: ${error.message}` });
-    } else {
-      setHistory(prev => prev.filter(s => s.id !== id));
-      setStatus({ type: 'success', message: 'Encuesta eliminada.' });
-      setTimeout(() => setStatus({ type: '', message: '' }), 3000);
-    }
-  };
 
   // ─── SVG regions — coordinates match new circle layout ───
   // Circle A: cx=155 cy=155 r=115  | Circle B: cx=245 cy=155 r=115  | Circle C: cx=200 cy=235 r=115
@@ -1034,54 +1025,82 @@ VALIDACIÓN FINAL antes de responder:
           {activeTab === 'history' && (
             <div className="space-y-3 fade-in">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="font-black text-slate-800 text-sm">Encuestas Guardadas</h4>
+                <h4 className="font-black text-slate-800 text-sm">Mis Encuestas Publicadas</h4>
                 <button
                   onClick={fetchHistory}
                   className="flex items-center gap-1 text-xs font-bold text-teal-600 hover:text-teal-700 transition-colors"
                 >
-                  <IconRefresh /> Refrescar
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
+                  Refrescar
                 </button>
               </div>
 
               {loadingHistory ? (
-                <div className="py-10 text-center text-slate-400 text-sm animate-pulse">Cargando base de datos...</div>
+                <div className="py-10 text-center text-slate-400 text-sm animate-pulse">Cargando encuestas...</div>
               ) : history.length === 0 ? (
-                <div className="py-10 text-center text-slate-400 text-sm bg-slate-50 rounded-2xl border border-slate-100">
-                  No hay encuestas guardadas aún.
+                <div className="py-10 text-center text-slate-400 text-sm bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                  <p className="text-2xl">📋</p>
+                  <p>No has publicado encuestas aún.</p>
+                  <p className="text-[10px]">Crea una en el tab <strong>Crear Encuesta</strong>.</p>
                 </div>
               ) : (
-                history.map((survey) => (
-                  <div
-                    key={survey.id}
-                    onClick={() => loadSavedSurvey(survey)}
-                    className="relative p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-white hover:shadow-md hover:border-slate-200 transition-all cursor-pointer group"
-                  >
-                    {/* Delete button */}
-                    <button
-                      onClick={(e) => handleDeleteSurvey(survey.id, e)}
-                      title="Eliminar encuesta"
-                      className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
+                history.map((survey) => {
+                  const isActive = publishedSurvey?.id === survey.id;
+                  const totalResp = isActive ? Object.values(surveyResults).reduce((a, b) => a + b, 0) : null;
+                  return (
+                    <div
+                      key={survey.id}
+                      onClick={() => loadSavedSurvey(survey)}
+                      className={`relative p-4 rounded-2xl border transition-all cursor-pointer group ${
+                        isActive
+                          ? 'bg-teal-50 border-teal-300 shadow-sm shadow-teal-100'
+                          : 'bg-slate-50 border-slate-100 hover:bg-white hover:shadow-md hover:border-slate-200'
+                      }`}
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                        <path d="M10 11v6" /><path d="M14 11v6" />
-                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                      </svg>
-                    </button>
+                      {/* Indicador activo */}
+                      {isActive && (
+                        <span className="absolute top-3 left-3 flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500" />
+                        </span>
+                      )}
 
-                    <h5 className="font-bold text-slate-800 text-sm mb-1 group-hover:text-teal-600 transition-colors pr-8">
-                      {survey.title || 'Encuesta sin título'}
-                    </h5>
-                    <p className="text-xs text-slate-400 mb-2 truncate pr-4">{survey.description || 'Sin descripción'}</p>
-                    <div className="flex gap-1.5 flex-wrap">
-                      <span className="bg-slate-200 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full">U: {survey.universe || 0}</span>
-                      <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{survey.var_a_name || 'A'}</span>
-                      <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{survey.var_b_name || 'B'}</span>
-                      <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full">{survey.var_c_name || 'C'}</span>
+                      {/* Botón eliminar */}
+                      <button
+                        onClick={(e) => handleDeleteGeneralSurvey(survey.id, e)}
+                        title="Eliminar encuesta"
+                        className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+                      </button>
+
+                      {/* Contenido */}
+                      <h5 className={`font-bold text-sm mb-0.5 pr-8 ${isActive ? 'text-teal-700 pl-4' : 'text-slate-800 group-hover:text-teal-600'} transition-colors`}>
+                        {survey.titulo}
+                      </h5>
+                      <p className="text-[10px] text-slate-400 mb-2 truncate pr-4">
+                        {survey.pregunta}
+                      </p>
+                      <div className="flex gap-1.5 flex-wrap items-center">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          survey.tipo === 'si_no' ? 'bg-blue-100 text-blue-700'
+                          : survey.tipo === 'valoracion' ? 'bg-amber-100 text-amber-700'
+                          : 'bg-purple-100 text-purple-700'
+                        }`}>
+                          {survey.tipo === 'si_no' ? 'Sí/No' : survey.tipo === 'valoracion' ? 'Valoración' : 'Múltiple'}
+                        </span>
+                        {isActive && totalResp !== null && (
+                          <span className="bg-teal-100 text-teal-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                            {totalResp} resp. en vivo
+                          </span>
+                        )}
+                        <span className="text-[10px] text-slate-300 ml-auto">
+                          {new Date(survey.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}
