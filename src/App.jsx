@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Groq from "groq-sdk";
+import SurveyInsights from './SurveyInsights';
 
 // Inicializamos Groq fuera del componente para no recrearlo en cada render
 const groq = new Groq({
@@ -288,159 +289,59 @@ function App() {
     setTimeout(() => setStatus({ type: '', message: '' }), 4000);
   };
 
-  // ─── IA: Procesar descripción con Groq ───
+  // ─── IA: Copiloto Creador — Generar preguntas sugeridas con Groq ───
   const handleAiProcess = async () => {
-    if (!generalSurvey.descripcion) {
-      alert("Por favor, ingresa el enunciado del problema en la descripción.");
+    if (!generalSurvey.descripcion.trim()) {
+      setStatus({ type: 'error', message: 'Escribe una descripción del estudio antes de generar preguntas.' });
       return;
     }
 
     setIsAnalyzing(true);
-    setAnalysisResults(null); // Limpiar resultados previos
-    setStatus({ type: 'loading', message: 'Analizando con IA...' });
+    setAnalysisResults(null);
+    setStatus({ type: 'loading', message: 'Generando preguntas con IA...' });
 
     try {
       const completion = await groq.chat.completions.create({
         messages: [
           {
-            role: "system",
-            content: `Eres un motor de extracción estructurada para problemas de teoría de conjuntos. Analiza el enunciado en DOS CAPAS ESTRICTAS y devuelve ÚNICAMENTE un objeto JSON en texto plano.
-
-REGLAS ABSOLUTAS:
-1. Devuelve SOLO el JSON. NADA MÁS. Sin texto antes ni después.
-2. PROHIBIDO usar bloques markdown (\`\`\`json o \`\`\`). Solo texto plano.
-3. NO resuelvas el problema. Solo extrae y clasifica.
-
-═══ CAPA 1: EXTRACCIÓN DE HECHOS CONFIRMADOS ═══
-Identifica TODOS los valores numéricos explícitos del enunciado y asígnalos a su clave correcta usando este DICCIONARIO SEMÁNTICO ESTRICTO:
-
-DICCIONARIO DE MAPEO (obligatorio):
-- "encuestados", "personas", "total de la muestra", "universo" → U
-- "prefieren A", "eligen A", "consumen A", "practican A" → totalA
-- "prefieren B", "eligen B", "consumen B", "practican B" → totalB  
-- "prefieren C", "eligen C", "consumen C", "practican C" → totalC
-- "ambos A y B", "A y B simultáneamente", "A y B a la vez" → intAB
-- "ambos A y C", "A y C simultáneamente" → intAC
-- "ambos B y C", "B y C simultáneamente" → intBC
-- "los tres", "las tres opciones", "los tres simultáneamente", "todas las categorías", "A, B y C a la vez" → triple
-- "ninguno de los tres", "ninguna opción", "no pertenecen a ninguno", "fuera de los grupos", "no eligieron ninguno" → none
-
-REGLA ANTI-PROXIMIDAD: Lee cada oración COMPLETA antes de asignar. Un número pertenece a la frase que lo contiene semánticamente, NO al sustantivo más cercano.
-
-═══ CAPA 2: IDENTIFICACIÓN DE LA INCÓGNITA ═══
-PRINCIPIO DE EXCLUSIÓN MUTUA: Una variable que ya recibió un valor numérico en Capa 1 tiene PROHIBIDO ser la incógnita. La incógnita DEBE ser una variable que quedó sin valor.
-
-Claves válidas para incógnitas:
-- onlyA, onlyB, onlyC = solo pertenecen a un grupo exclusivamente
-- excAB, excAC, excBC = exactamente en esos dos pero no en el tercero
-- triple = en los tres grupos
-- none = en ningún grupo
-- unionTotal = en al menos un grupo
-- U, totalA, totalB, totalC, intAB, intAC, intBC = si no fueron dados
-
-═══ ESTRUCTURA JSON DE SALIDA ═══
-{
-  "hechos_confirmados": {
-    "U": <número>,
-    "totalA": <número>,
-    ...solo las claves que tienen valor numérico explícito en el texto
-  },
-  "variables_nulas": ["triple", "onlyA", ...],
-  "incognita_objetivo": "triple",
-  "nombres_conjuntos": {
-    "A": "Nombre del primer grupo",
-    "B": "Nombre del segundo grupo",
-    "C": "Nombre del tercer grupo"
-  },
-  "analisis_enunciado": {
-    "objetivo": "Qué busca resolver el problema",
-    "hallazgos": ["Dato clave 1", "Dato clave 2"],
-    "preguntas_detectadas": [
-      {"pregunta": "Texto literal de la pregunta", "incognita": "clave_de_variable"}
-    ]
-  }
-}
-
-VALIDACIÓN FINAL antes de responder:
-- ¿Cada valor en hechos_confirmados aparece LITERALMENTE como número en el texto? Si no, elimínalo.
-- ¿La incognita_objetivo está ausente de hechos_confirmados? Si no, corrígelo.
-- ¿Las claves en hechos_confirmados son del set {U, totalA, totalB, totalC, intAB, intAC, intBC, triple, none}? Si no, reclasifica.`
+            role: 'system',
+            content: 'Actúa como un experto en diseño de encuestas. Recibirás la descripción de un estudio. Tu tarea es devolver ÚNICAMENTE un arreglo en formato JSON válido con 3 preguntas sugeridas. Cada pregunta debe tener la estructura: { "id": string, "question": string, "type": "single_choice" | "multiple_choice", "options": string[] }.'
           },
           {
-            role: "user",
-            content: generalSurvey.descripcion
+            role: 'user',
+            content: generalSurvey.descripcion.trim()
           }
         ],
-        model: "llama-3.1-8b-instant",
-        temperature: 0
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.4,
+        max_tokens: 600,
+        response_format: { type: 'json_object' }
       });
 
-      // Limpieza defensiva: purgar markdown residual
       const rawContent = completion.choices[0].message.content;
-      const cleanedContent = rawContent
-        .replace(/```json/gi, '')
-        .replace(/```/g, '')
-        .trim();
-
-      console.log("Respuesta cruda de Groq:", rawContent);
+      const cleanedContent = rawContent.replace(/```json/gi, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanedContent);
-      console.log("Datos parseados:", parsed);
 
-      // ─── Mapeo desde nueva estructura (con fallback a la vieja) ───
-      const confirmedFacts = parsed.hechos_confirmados || parsed.datos_matriz || parsed;
+      const questions = Array.isArray(parsed)
+        ? parsed
+        : parsed.questions || parsed.preguntas || Object.values(parsed)[0] || [];
 
-      // Poblar inputs: hechos confirmados → string, todo lo demás → ''
-      const inputKeys = ['U', 'totalA', 'totalB', 'totalC', 'intAB', 'intAC', 'intBC', 'triple', 'none'];
-      setInputs(prev => {
-        const updated = { ...prev };
-        inputKeys.forEach(key => {
-          if (confirmedFacts[key] != null) {
-            updated[key] = String(confirmedFacts[key]);
-          } else {
-            updated[key] = '';
-          }
-        });
-        return updated;
-      });
-
-      // Guardar resultados del análisis para el panel de UI
-      if (parsed.analisis_enunciado) {
-        // Inyectar la incógnita objetivo como primera pregunta si no está ya
-        const analysis = { ...parsed.analisis_enunciado };
-        if (parsed.incognita_objetivo && (!analysis.preguntas_detectadas || analysis.preguntas_detectadas.length === 0)) {
-          analysis.preguntas_detectadas = [{
-            pregunta: analysis.objetivo || '¿Cuál es el valor buscado?',
-            incognita: parsed.incognita_objetivo
-          }];
-        }
-        setAnalysisResults(analysis);
+      if (!Array.isArray(questions) || questions.length === 0) {
+        throw new Error('La IA no devolvió preguntas válidas.');
       }
 
-      // Autocompletar nombres de conjuntos
-      if (parsed.nombres_conjuntos) {
-        const nc = parsed.nombres_conjuntos;
-        setVarNames(prev => ({
-          A: nc.A || prev.A,
-          B: nc.B || prev.B,
-          C: nc.C || prev.C
-        }));
-      }
-
-      setDeducedFields([]);
-      setActiveTab('data');
-
-      // Log de diagnóstico
-      if (parsed.incognita_objetivo) {
-        console.log(`🎯 Incógnita objetivo: ${parsed.incognita_objetivo}`);
-        console.log(`📋 Variables nulas: ${(parsed.variables_nulas || []).join(', ')}`);
-      }
-
-      setStatus({ type: 'success', message: '¡Análisis completado por la IA!' });
-      setTimeout(() => setStatus({ type: '', message: '' }), 4000);
+      setAnalysisResults({ generatedQuestions: questions });
+      setStatus({ type: 'success', message: `¡${questions.length} preguntas generadas! Revísalas en el panel.` });
+      setTimeout(() => setStatus({ type: '', message: '' }), 5000);
 
     } catch (error) {
-      console.error("Fallo en la inferencia:", error);
-      setStatus({ type: 'error', message: 'Error al contactar con la IA. Revisa la consola.' });
+      console.error('Error generando preguntas:', error);
+      setStatus({
+        type: 'error',
+        message: error instanceof SyntaxError
+          ? 'La IA devolvió una respuesta inválida. Intenta reformular la descripción.'
+          : 'Error al contactar con la IA. Revisa la consola.'
+      });
     } finally {
       setIsAnalyzing(false);
     }
@@ -737,248 +638,227 @@ VALIDACIÓN FINAL antes de responder:
       <div className="flex-1 flex flex-col bg-white relative min-h-[60vh] lg:min-h-0">
 
         {activeSurveyMode === 'general' ? (
-          <GeneralSurveyCanvas
-            titulo={generalSurvey.titulo}
-            descripcion={generalSurvey.descripcion}
-            pregunta={generalSurvey.pregunta}
-            tipo={generalSurvey.tipo}
-            opciones={getOpcionesForType(generalSurvey.tipo, generalSurvey.opcionesCustom)}
-            results={surveyResults}
-            isPublished={!!publishedSurvey}
-          />
+          <>
+            <GeneralSurveyCanvas
+              titulo={generalSurvey.titulo}
+              descripcion={generalSurvey.descripcion}
+              pregunta={generalSurvey.pregunta}
+              tipo={generalSurvey.tipo}
+              opciones={getOpcionesForType(generalSurvey.tipo, generalSurvey.opcionesCustom)}
+              results={surveyResults}
+              isPublished={!!publishedSurvey}
+            />
+            <SurveyInsights titulo={generalSurvey.titulo} pregunta={generalSurvey.pregunta} results={surveyResults} />
+          </>
         ) : (<>
-        {/* Header — title + description stacked, centred */}
-        <header className="relative z-10 flex flex-col items-center text-center px-8 pt-8 pb-2">
-          {/* Big gradient title */}
-          <h1 className="text-4xl font-black tracking-tight uppercase leading-none"
-            style={{
-              background: 'linear-gradient(135deg, #1e293b 0%, #475569 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text'
-            }}>
-            {surveyMeta.title || 'Encuesta'}
-          </h1>
+          {/* Header — title + description stacked, centred */}
+          <header className="relative z-10 flex flex-col items-center text-center px-8 pt-8 pb-2">
+            {/* Big gradient title */}
+            <h1 className="text-4xl font-black tracking-tight uppercase leading-none"
+              style={{
+                background: 'linear-gradient(135deg, #1e293b 0%, #475569 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text'
+              }}>
+              {surveyMeta.title || 'Encuesta'}
+            </h1>
 
-          {/* Description — styled card with scroll cap */}
-          {surveyMeta.description && (
-            <div className="max-w-2xl w-full mx-auto mt-4 bg-slate-50/50 border border-slate-200 rounded-2xl p-5">
-              {/* Card header */}
-              <div className="flex items-center justify-center gap-1.5 mb-2 text-slate-400">
-                <IconInfo />
-                <span className="text-xs font-bold uppercase tracking-widest">Descripción</span>
+            {/* Description — styled card with scroll cap */}
+            {surveyMeta.description && (
+              <div className="max-w-2xl w-full mx-auto mt-4 bg-slate-50/50 border border-slate-200 rounded-2xl p-5">
+                {/* Card header */}
+                <div className="flex items-center justify-center gap-1.5 mb-2 text-slate-400">
+                  <IconInfo />
+                  <span className="text-xs font-bold uppercase tracking-widest">Descripción</span>
+                </div>
+                {/* Scrollable text body */}
+                <div className="max-h-40 overflow-y-auto custom-scrollbar">
+                  <p className="text-sm text-slate-600 font-medium leading-relaxed text-center whitespace-pre-line">
+                    {surveyMeta.description}
+                  </p>
+                </div>
               </div>
-              {/* Scrollable text body */}
-              <div className="max-h-40 overflow-y-auto custom-scrollbar">
-                <p className="text-sm text-slate-600 font-medium leading-relaxed text-center whitespace-pre-line">
-                  {surveyMeta.description}
-                </p>
-              </div>
-            </div>
-          )}
-        </header>
+            )}
+          </header>
 
 
-        {/* SVG Diagram area */}
-        <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 pb-8">
+          {/* SVG Diagram area */}
+          <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 pb-8">
 
-          {/* SVG wrapper — relative so labels can be absolute */}
-          <div className="relative w-full max-w-lg">
+            {/* SVG wrapper — relative so labels can be absolute */}
+            <div className="relative w-full max-w-lg">
 
-            {/* Total badge — above Variable B, right side */}
-            <span className="absolute top-[18%] -right-4 z-10 flex items-baseline gap-1.5 bg-white/80 border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm backdrop-blur-sm">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total</span>
-              <span className="text-lg font-black text-slate-700 leading-none">{U}</span>
-            </span>
+              {/* Total badge — above Variable B, right side */}
+              <span className="absolute top-[18%] -right-4 z-10 flex items-baseline gap-1.5 bg-white/80 border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm backdrop-blur-sm">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total</span>
+                <span className="text-lg font-black text-slate-700 leading-none">{U}</span>
+              </span>
 
-            {/* Variable A — left label, slightly outside the circle */}
-            <span className="absolute -left-6 top-[38%] -translate-y-1/2 text-slate-700 text-sm font-black leading-tight">
-              {varNames.A || 'Variable A'}
-            </span>
-            {/* Variable B — right label, slightly outside the circle */}
-            <span className="absolute -right-6 top-[38%] -translate-y-1/2 text-slate-700 text-sm font-black leading-tight text-right">
-              {varNames.B || 'Variable B'}
-            </span>
+              {/* Variable A — left label, slightly outside the circle */}
+              <span className="absolute -left-6 top-[38%] -translate-y-1/2 text-slate-700 text-sm font-black leading-tight">
+                {varNames.A || 'Variable A'}
+              </span>
+              {/* Variable B — right label, slightly outside the circle */}
+              <span className="absolute -right-6 top-[38%] -translate-y-1/2 text-slate-700 text-sm font-black leading-tight text-right">
+                {varNames.B || 'Variable B'}
+              </span>
 
-            <svg viewBox="0 0 400 390" className="w-full h-auto">
+              <svg viewBox="0 0 400 390" className="w-full h-auto">
 
-              {/* Circle A — deep blue */}
-              <circle cx="155" cy="155" r="115"
-                fill={['circleA', 'onlyA', 'AB', 'AC', 'ABC'].includes(hoveredRegion) ? 'rgba(30,64,175,0.88)' : 'rgba(30,64,175,0.78)'}
-                style={{ transition: 'fill 0.2s', cursor: 'pointer' }}
-                onMouseEnter={() => setHoveredRegion('circleA')}
-                onMouseLeave={() => setHoveredRegion(null)}
-              />
+                {/* Circle A — deep blue */}
+                <circle cx="155" cy="155" r="115"
+                  fill={['circleA', 'onlyA', 'AB', 'AC', 'ABC'].includes(hoveredRegion) ? 'rgba(30,64,175,0.88)' : 'rgba(30,64,175,0.78)'}
+                  style={{ transition: 'fill 0.2s', cursor: 'pointer' }}
+                  onMouseEnter={() => setHoveredRegion('circleA')}
+                  onMouseLeave={() => setHoveredRegion(null)}
+                />
 
-              {/* Circle B — green */}
-              <circle cx="245" cy="155" r="115"
-                fill={['circleB', 'onlyB', 'AB', 'BC', 'ABC'].includes(hoveredRegion) ? 'rgba(5,150,105,0.88)' : 'rgba(5,150,105,0.78)'}
-                style={{ transition: 'fill 0.2s', cursor: 'pointer' }}
-                onMouseEnter={() => setHoveredRegion('circleB')}
-                onMouseLeave={() => setHoveredRegion(null)}
-              />
+                {/* Circle B — green */}
+                <circle cx="245" cy="155" r="115"
+                  fill={['circleB', 'onlyB', 'AB', 'BC', 'ABC'].includes(hoveredRegion) ? 'rgba(5,150,105,0.88)' : 'rgba(5,150,105,0.78)'}
+                  style={{ transition: 'fill 0.2s', cursor: 'pointer' }}
+                  onMouseEnter={() => setHoveredRegion('circleB')}
+                  onMouseLeave={() => setHoveredRegion(null)}
+                />
 
-              {/* Circle C — brown/terracotta */}
-              <circle cx="200" cy="235" r="115"
-                fill={['circleC', 'onlyC', 'AC', 'BC', 'ABC'].includes(hoveredRegion) ? 'rgba(120,72,40,0.82)' : 'rgba(120,72,40,0.72)'}
-                style={{ transition: 'fill 0.2s', cursor: 'pointer' }}
-                onMouseEnter={() => setHoveredRegion('circleC')}
-                onMouseLeave={() => setHoveredRegion(null)}
-              />
+                {/* Circle C — brown/terracotta */}
+                <circle cx="200" cy="235" r="115"
+                  fill={['circleC', 'onlyC', 'AC', 'BC', 'ABC'].includes(hoveredRegion) ? 'rgba(120,72,40,0.82)' : 'rgba(120,72,40,0.72)'}
+                  style={{ transition: 'fill 0.2s', cursor: 'pointer' }}
+                  onMouseEnter={() => setHoveredRegion('circleC')}
+                  onMouseLeave={() => setHoveredRegion(null)}
+                />
 
-              {/* Variable C label inside bottom of circle */}
-              <text x="200" y="368" textAnchor="middle" style={{ fontSize: '14px', fontWeight: 900, fill: '#374151' }}>
-                {varNames.C || 'Variable C'}
-              </text>
+                {/* Variable C label inside bottom of circle */}
+                <text x="200" y="368" textAnchor="middle" style={{ fontSize: '14px', fontWeight: 900, fill: '#374151' }}>
+                  {varNames.C || 'Variable C'}
+                </text>
 
-              {/* "Fuera" — bottom-right corner of SVG */}
-              <text
-                x="388" y="386"
-                textAnchor="end"
-                style={{ fontSize: '11px', fontWeight: 700, fill: '#b45309', cursor: 'pointer', letterSpacing: '0.05em' }}
-                onMouseEnter={() => setHoveredRegion('none')}
-                onMouseLeave={() => setHoveredRegion(null)}
-              >
-                FUERA: {getDisplayValue(none)}
-              </text>
-
-              {/* Region values — bold white numbers */}
-              {svgRegions.map((reg) => (
+                {/* "Fuera" — bottom-right corner of SVG */}
                 <text
-                  key={reg.key}
-                  x={reg.x}
-                  y={reg.y + 10}
-                  textAnchor="middle"
-                  alignmentBaseline="middle"
-                  style={{
-                    fontSize: reg.key === 'ABC' ? '20px' : (reg.key === 'onlyA' || reg.key === 'onlyB' || reg.key === 'onlyC' ? '22px' : '17px'),
-                    fontWeight: 900,
-                    fill: reg.value < 0 ? '#fca5a5' : '#ffffff',
-                    cursor: 'pointer',
-                    filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.4))',
-                    transition: 'font-size 0.15s',
-                    letterSpacing: '-0.01em'
-                  }}
-                  onMouseEnter={() => setHoveredRegion(reg.key)}
+                  x="388" y="386"
+                  textAnchor="end"
+                  style={{ fontSize: '11px', fontWeight: 700, fill: '#b45309', cursor: 'pointer', letterSpacing: '0.05em' }}
+                  onMouseEnter={() => setHoveredRegion('none')}
                   onMouseLeave={() => setHoveredRegion(null)}
                 >
-                  {getDisplayValue(reg.value)}
+                  FUERA: {getDisplayValue(none)}
                 </text>
-              ))}
-            </svg>
+
+                {/* Region values — bold white numbers */}
+                {svgRegions.map((reg) => (
+                  <text
+                    key={reg.key}
+                    x={reg.x}
+                    y={reg.y + 10}
+                    textAnchor="middle"
+                    alignmentBaseline="middle"
+                    style={{
+                      fontSize: reg.key === 'ABC' ? '20px' : (reg.key === 'onlyA' || reg.key === 'onlyB' || reg.key === 'onlyC' ? '22px' : '17px'),
+                      fontWeight: 900,
+                      fill: reg.value < 0 ? '#fca5a5' : '#ffffff',
+                      cursor: 'pointer',
+                      filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.4))',
+                      transition: 'font-size 0.15s',
+                      letterSpacing: '-0.01em'
+                    }}
+                    onMouseEnter={() => setHoveredRegion(reg.key)}
+                    onMouseLeave={() => setHoveredRegion(null)}
+                  >
+                    {getDisplayValue(reg.value)}
+                  </text>
+                ))}
+              </svg>
+            </div>
+
+            {/* Validation Report — inline below diagram */}
+            {report.length > 0 && (
+              <div className="w-full max-w-lg mt-4 space-y-2 fade-in">
+                {report.map((item, idx) => (
+                  <div key={idx} className={`flex items-start gap-2 px-4 py-3 rounded-xl text-sm font-semibold border ${item.type === 'error' ? 'bg-red-50 text-red-700 border-red-200' :
+                    item.type === 'warn' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                      'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    }`}>
+                    <span className="shrink-0 mt-0.5">
+                      {item.type === 'error' && '❌'}
+                      {item.type === 'warn' && '⚠️'}
+                      {item.type === 'success' && '✅'}
+                    </span>
+                    {item.msg}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Validation Report — inline below diagram */}
-          {report.length > 0 && (
-            <div className="w-full max-w-lg mt-4 space-y-2 fade-in">
-              {report.map((item, idx) => (
-                <div key={idx} className={`flex items-start gap-2 px-4 py-3 rounded-xl text-sm font-semibold border ${item.type === 'error' ? 'bg-red-50 text-red-700 border-red-200' :
-                  item.type === 'warn' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                    'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  }`}>
-                  <span className="shrink-0 mt-0.5">
-                    {item.type === 'error' && '❌'}
-                    {item.type === 'warn' && '⚠️'}
-                    {item.type === 'success' && '✅'}
-                  </span>
-                  {item.msg}
+          {/* Panel: Preguntas sugeridas por la IA */}
+          {analysisResults && analysisResults.generatedQuestions && analysisResults.generatedQuestions.length > 0 && (
+            <div className="w-full max-w-2xl mx-auto mt-6 fade-in px-4">
+              <div className="bg-white border border-indigo-100 rounded-3xl shadow-lg shadow-indigo-100/50 overflow-hidden">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-indigo-50 bg-gradient-to-r from-indigo-50 to-purple-50">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shadow-sm">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+                        <path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z" />
+                        <circle cx="12" cy="15" r="2" />
+                      </svg>
+                    </span>
+                    <div>
+                      <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest">Copiloto IA</p>
+                      <h3 className="font-black text-slate-800 text-sm leading-tight">Preguntas sugeridas</h3>
+                    </div>
+                  </div>
+                  <button onClick={() => setAnalysisResults(null)} className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-all" title="Cerrar sugerencias">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                  </button>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── AI Analysis Results Panel ── */}
-        {analysisResults && (
-          <div className="w-full max-w-lg mt-6 fade-in">
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-              {/* Panel header */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <span className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z" />
-                      <circle cx="12" cy="15" r="2" />
-                    </svg>
-                  </span>
-                  <h3 className="font-black text-slate-800 text-sm tracking-tight">Análisis del Problema</h3>
-                </div>
-                <button
-                  onClick={() => setAnalysisResults(null)}
-                  className="text-slate-300 hover:text-slate-500 transition-colors"
-                  title="Cerrar panel"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Objetivo */}
-              {analysisResults.objetivo && (
-                <div className="mb-4">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Objetivo</p>
-                  <p className="text-sm text-slate-700 font-medium leading-relaxed">{analysisResults.objetivo}</p>
-                </div>
-              )}
-
-              {/* Hallazgos */}
-              {analysisResults.hallazgos && analysisResults.hallazgos.length > 0 && (
-                <div className="mb-4">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Datos Identificados</p>
-                  <ul className="space-y-1.5">
-                    {analysisResults.hallazgos.map((h, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
-                        <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5 text-xs font-black">{i + 1}</span>
-                        {h}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Preguntas detectadas */}
-              {analysisResults.preguntas_detectadas && analysisResults.preguntas_detectadas.length > 0 && (
-                <div>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Preguntas del Problema</p>
-                  <div className="space-y-2">
-                    {analysisResults.preguntas_detectadas.map((q, i) => {
-                      const resolvedValue = q.incognita && computedValues[q.incognita];
-                      const hasData = filledCount >= 2;
-                      return (
-                        <div key={i} className="flex items-start gap-2 px-3 py-2.5 bg-indigo-50/50 border border-indigo-100 rounded-xl">
-                          <span className="text-indigo-500 shrink-0 mt-0.5">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" />
-                            </svg>
-                          </span>
-                          <div className="flex-1">
-                            <p className="text-sm text-slate-700 font-semibold">{q.pregunta}</p>
-                            {q.incognita && (
-                              <div className="flex items-center gap-2 mt-1.5">
-                                {hasData && resolvedValue !== undefined && resolvedValue !== null ? (
-                                  <span className="inline-flex items-center gap-1 text-xs font-black text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-lg">
-                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-                                    R = {resolvedValue}
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                                    ⏳ Pendiente de cálculo
-                                  </span>
-                                )}
-                                <span className="text-[9px] font-mono text-slate-300">{q.incognita}</span>
+                <div className="divide-y divide-slate-100">
+                  {analysisResults.generatedQuestions.map((q, i) => {
+                    const isMultiple = q.type === 'multiple_choice';
+                    const typeLabel = isMultiple ? 'Opcion multiple' : 'Opcion unica';
+                    const typeColor = isMultiple ? 'bg-purple-100 text-purple-700' : 'bg-teal-100 text-teal-700';
+                    const appTipo = isMultiple ? 'multiple' : 'si_no';
+                    return (
+                      <div key={q.id || i} className="px-6 py-4 hover:bg-slate-50 transition-colors">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-black shrink-0">{i + 1}</span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColor}`}>{typeLabel}</span>
+                            </div>
+                            <p className="text-sm font-semibold text-slate-800 leading-snug mb-2.5">{q.question}</p>
+                            {Array.isArray(q.options) && q.options.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5">
+                                {q.options.slice(0, 4).map((opt, j) => (
+                                  <span key={j} className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{opt}</span>
+                                ))}
                               </div>
                             )}
                           </div>
+                          <button
+                            onClick={() => {
+                              const opts = Array.isArray(q.options) && q.options.length > 1 ? q.options.slice(0, 4) : ['Opcion A', 'Opcion B', 'Opcion C'];
+                              setGeneralSurvey(prev => ({ ...prev, pregunta: q.question, tipo: appTipo, opcionesCustom: opts }));
+                              setStatus({ type: 'success', message: 'Pregunta aplicada al formulario.' });
+                              setTimeout(() => setStatus({ type: '', message: '' }), 3000);
+                            }}
+                            className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 transition-all active:scale-95"
+                          >
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                            Usar
+                          </button>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
+                <div className="px-6 py-3 bg-slate-50 border-t border-slate-100">
+                  <p className="text-[10px] text-slate-400 font-medium text-center">Clic en Usar para aplicar una pregunta al formulario. Puedes editarla despues.</p>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          )}
         </>)}
       </div>
 
@@ -1051,11 +931,10 @@ VALIDACIÓN FINAL antes de responder:
                     <div
                       key={survey.id}
                       onClick={() => loadSavedSurvey(survey)}
-                      className={`relative p-4 rounded-2xl border transition-all cursor-pointer group ${
-                        isActive
-                          ? 'bg-teal-50 border-teal-300 shadow-sm shadow-teal-100'
-                          : 'bg-slate-50 border-slate-100 hover:bg-white hover:shadow-md hover:border-slate-200'
-                      }`}
+                      className={`relative p-4 rounded-2xl border transition-all cursor-pointer group ${isActive
+                        ? 'bg-teal-50 border-teal-300 shadow-sm shadow-teal-100'
+                        : 'bg-slate-50 border-slate-100 hover:bg-white hover:shadow-md hover:border-slate-200'
+                        }`}
                     >
                       {/* Indicador activo */}
                       {isActive && (
@@ -1082,11 +961,10 @@ VALIDACIÓN FINAL antes de responder:
                         {survey.pregunta}
                       </p>
                       <div className="flex gap-1.5 flex-wrap items-center">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          survey.tipo === 'si_no' ? 'bg-blue-100 text-blue-700'
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${survey.tipo === 'si_no' ? 'bg-blue-100 text-blue-700'
                           : survey.tipo === 'valoracion' ? 'bg-amber-100 text-amber-700'
-                          : 'bg-purple-100 text-purple-700'
-                        }`}>
+                            : 'bg-purple-100 text-purple-700'
+                          }`}>
                           {survey.tipo === 'si_no' ? 'Sí/No' : survey.tipo === 'valoracion' ? 'Valoración' : 'Múltiple'}
                         </span>
                         {isActive && totalResp !== null && (
@@ -1132,7 +1010,7 @@ VALIDACIÓN FINAL antes de responder:
                 <textarea
                   id="general-descripcion"
                   rows="5"
-                  placeholder="Ej: En una encuesta a 150 personas sobre preferencias de estudio..."
+                  placeholder="Ej: Descripción del estudio..."
                   value={generalSurvey.descripcion}
                   onChange={e => setGeneralSurvey(prev => ({ ...prev, descripcion: e.target.value }))}
                   className="w-full px-3 py-2.5 border border-slate-200 bg-white text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-teal-400 focus:outline-none placeholder-slate-300 shadow-sm resize-none"
@@ -1149,16 +1027,77 @@ VALIDACIÓN FINAL antes de responder:
                         : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
                       }`}
                   >
-                    {isAnalyzing ? "Analizando..." : "Solución del ejercicio"}
+                    {isAnalyzing ? 'Generando...' : 'Generar Preguntas con IA'}
                   </button>
                 </div>
               </div>
 
+              {/* ── Preguntas sugeridas por la IA ── */}
+              {analysisResults && analysisResults.generatedQuestions && analysisResults.generatedQuestions.length > 0 && (
+                <div className="mt-4 rounded-2xl border border-indigo-100 overflow-hidden shadow-md" style={{ background: 'linear-gradient(135deg,#f5f3ff 0%,#ede9fe 100%)' }}>
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-indigo-100">
+                    <div className="flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center shadow-sm">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z" /><circle cx="12" cy="15" r="2" /></svg>
+                      </span>
+                      <div>
+                        <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest leading-none">Copiloto IA</p>
+                        <p className="text-xs font-black text-slate-800">Preguntas sugeridas</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setAnalysisResults(null)} className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-white/60 transition-all">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                    </button>
+                  </div>
+                  {/* Cards */}
+                  <div className="divide-y divide-indigo-100/60">
+                    {analysisResults.generatedQuestions.map((q, i) => {
+                      const isMultiple = q.type === 'multiple_choice';
+                      const appTipo = isMultiple ? 'multiple' : 'si_no';
+                      return (
+                        <div key={q.id || i} className="px-4 py-3 hover:bg-white/40 transition-colors">
+                          <div className="flex items-start gap-2">
+                            <span className="w-5 h-5 rounded-full bg-indigo-200 text-indigo-700 flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5">{i + 1}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-slate-800 leading-snug mb-1.5">{q.question}</p>
+                              {Array.isArray(q.options) && q.options.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mb-2">
+                                  {q.options.slice(0, 4).map((opt, j) => (
+                                    <span key={j} className="text-[10px] font-semibold text-slate-500 bg-white/70 border border-slate-200 px-1.5 py-0.5 rounded-full">{opt}</span>
+                                  ))}
+                                </div>
+                              )}
+                              <button
+                                onClick={() => {
+                                  const opts = Array.isArray(q.options) && q.options.length > 1 ? q.options.slice(0, 4) : ['Opción A', 'Opción B', 'Opción C'];
+                                  setGeneralSurvey(prev => ({ ...prev, pregunta: q.question, tipo: appTipo, opcionesCustom: opts }));
+                                  setStatus({ type: 'success', message: `Pregunta ${i + 1} aplicada ✓` });
+                                  setTimeout(() => setStatus({ type: '', message: '' }), 2500);
+                                }}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all active:scale-95"
+                              >
+                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                                Usar esta pregunta
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="px-4 py-2 bg-indigo-50/60 border-t border-indigo-100">
+                    <p className="text-[10px] text-indigo-400 font-medium">Toca "Usar esta pregunta" para aplicarla al formulario</p>
+                  </div>
+                </div>
+              )}
+
               {/* ── Configurar Pregunta ── */}
+
               <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
                 <div className="flex items-center gap-2 mb-4">
                   <span className="text-base">📊</span>
-                  <h4 className="font-black text-slate-800 text-sm">Configurar Pregunta</h4>
+                  <h4 className="font-black text-slate-800 text-sm">Diseñar una Pregunta Manualmente</h4>
                 </div>
 
                 {/* Pregunta */}
@@ -1183,11 +1122,10 @@ VALIDACIÓN FINAL antes de responder:
                     <button
                       key={opt.value}
                       onClick={() => setGeneralSurvey(prev => ({ ...prev, tipo: opt.value }))}
-                      className={`py-2.5 px-1 rounded-xl text-xs font-bold transition-all border flex flex-col items-center gap-0.5 ${
-                        generalSurvey.tipo === opt.value
-                          ? 'bg-teal-500 text-white border-teal-500 shadow-sm'
-                          : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                      }`}
+                      className={`py-2.5 px-1 rounded-xl text-xs font-bold transition-all border flex flex-col items-center gap-0.5 ${generalSurvey.tipo === opt.value
+                        ? 'bg-teal-500 text-white border-teal-500 shadow-sm'
+                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                        }`}
                     >
                       <span className="text-sm">{opt.icon}</span>
                       {opt.label}
@@ -1241,11 +1179,10 @@ VALIDACIÓN FINAL antes de responder:
               <button
                 id="general-preview-btn"
                 onClick={() => setShowPreview(prev => !prev)}
-                className={`w-full py-3 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
-                  showPreview
-                    ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
-                    : 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/20'
-                }`}
+                className={`w-full py-3 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${showPreview
+                  ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                  : 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/20'
+                  }`}
               >
                 {showPreview ? (
                   <>
@@ -1330,9 +1267,8 @@ VALIDACIÓN FINAL antes de responder:
                         setLinkCopied(true);
                         setTimeout(() => setLinkCopied(false), 2500);
                       }}
-                      className={`shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg transition-all ${
-                        linkCopied ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                      }`}
+                      className={`shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg transition-all ${linkCopied ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                        }`}
                     >
                       {linkCopied ? '✓ Copiado' : 'Copiar'}
                     </button>
@@ -1374,54 +1310,50 @@ VALIDACIÓN FINAL antes de responder:
 
 /* ─────────────────────── SUB-COMPONENTS ─────────────────────── */
 
-/** Gráfico de barras para encuestas generales (vista previa del panel izquierdo) */
+/** Gráfico de barras interactivo para encuestas generales */
 function GeneralSurveyCanvas({ titulo, descripcion, pregunta, tipo, opciones, results = {}, isPublished = false }) {
-  const COLORS = ['#0d9488', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444'];
-  const W = 400, H = 200;
-  const count = opciones.length || 1;
-  const BAR_W = Math.max(28, Math.floor((W - 60) / count) - 14);
-  const gap = Math.floor((W - 60 - BAR_W * count) / (count + 1));
-  const DEMO_H = [0.65, 0.35, 0.80, 0.45, 0.55];
+  const [hoveredBar, setHoveredBar] = useState(null);
 
-  // Calcular alturas reales cuando hay resultados
+  const COLORS      = ['#0d9488', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444'];
+  const COLORS_LITE = ['#ccfbf1', '#dbeafe', '#fef3c7', '#ede9fe', '#fee2e2'];
+
+  // Canvas dimensions
+  const MARGIN_L   = 48;   // space for y-axis labels
+  const MARGIN_R   = 16;
+  const H           = 255;  // chart area height (bars only)
+  const LABEL_H     = 90;   // space below x-axis reserved for labels
+  const AXIS_Y      = H + 14;
+  const W_INNER     = 500;  // drawable width inside margins
+  const SVG_W       = MARGIN_L + W_INNER + MARGIN_R;
+  const SVG_H       = AXIS_Y + LABEL_H;
+
+  const count  = Math.max(1, opciones.length);
+  const BAR_W  = Math.max(38, Math.floor(W_INNER / count) - 16);
+  const gap    = Math.floor((W_INNER - BAR_W * count) / (count + 1));
+
+  const DEMO_H = [0.65, 0.35, 0.82, 0.48, 0.57, 0.70, 0.42];
+
   const totalVotes = Object.values(results).reduce((a, b) => a + b, 0);
+  const hasRealData = isPublished && totalVotes > 0;
+
   const getBarH = (op, i) => {
-    if (isPublished && totalVotes > 0) {
-      return Math.max(8, Math.round(((results[op] || 0) / totalVotes) * H));
-    }
-    return Math.max(12, Math.round(DEMO_H[i % DEMO_H.length] * H));
-  };
-  const getBarLabel = (op) => {
-    if (isPublished && totalVotes > 0) {
-      const v = results[op] || 0;
-      return `${v} (${Math.round((v / totalVotes) * 100)}%)`;
-    }
-    return isPublished ? '0 resp.' : 'Vista previa';
+    if (hasRealData) return Math.max(8, Math.round(((results[op] || 0) / totalVotes) * H));
+    return Math.max(20, Math.round(DEMO_H[i % DEMO_H.length] * H));
   };
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-6 pt-8 pb-8">
-      {/* Título — se refleja en vivo */}
-      <h1
-        className="text-3xl font-black tracking-tight uppercase leading-none text-center"
-        style={{
-          background: 'linear-gradient(135deg, #1e293b 0%, #475569 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-        }}
-      >
+    <div className="flex-1 flex flex-col items-center justify-start px-4 pt-8 pb-6 w-full">
+
+      {/* Título */}
+      <h1 className="text-3xl font-black tracking-tight uppercase leading-none text-center mb-1"
+        style={{ background: 'linear-gradient(135deg,#1e293b 0%,#475569 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
         {titulo || 'Nueva Encuesta'}
       </h1>
 
-      {/* Descripción — tarjeta que se refleja en vivo desde el panel derecho */}
+      {/* Descripción */}
       {descripcion && (
-        <div className="max-w-2xl w-full mx-auto mt-4 bg-slate-50/50 border border-slate-200 rounded-2xl p-5">
-          <div className="flex items-center justify-center gap-1.5 mb-2 text-slate-400">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
-            <span className="text-xs font-bold uppercase tracking-widest">Descripción</span>
-          </div>
-          <div className="max-h-40 overflow-y-auto custom-scrollbar">
+        <div className="w-full max-w-2xl mx-auto mt-3 bg-slate-50/70 border border-slate-200 rounded-2xl px-5 py-3">
+          <div className="max-h-28 overflow-y-auto custom-scrollbar">
             <p className="text-sm text-slate-600 font-medium leading-relaxed text-center whitespace-pre-line">{descripcion}</p>
           </div>
         </div>
@@ -1429,78 +1361,191 @@ function GeneralSurveyCanvas({ titulo, descripcion, pregunta, tipo, opciones, re
 
       {/* Pregunta */}
       {pregunta && (
-        <div className="max-w-md w-full mx-auto mt-4 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-center">
-          <p className="text-sm text-slate-600 font-semibold leading-relaxed">{pregunta}</p>
+        <div className="w-full max-w-xl mx-auto mt-3 bg-white border border-slate-200 rounded-2xl px-5 py-3 text-center shadow-sm">
+          <p className="text-base text-slate-700 font-semibold leading-relaxed">{pregunta}</p>
         </div>
       )}
 
-      {/* Gráfico de barras SVG */}
-      <div className="relative w-full max-w-lg mt-6">
-        <svg viewBox={`0 0 ${W + 60} ${H + 70}`} className="w-full h-auto">
-          {/* Ejes */}
-          <line x1="40" y1="10" x2="40" y2={H + 15} stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
-          <line x1="40" y1={H + 15} x2={W + 50} y2={H + 15} stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
+      {/* ── Gráfico SVG ── */}
+      <div className="relative w-full mt-4 mx-auto" style={{ maxWidth: 'min(100%, 680px)' }}>
+        <svg
+          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          className="w-full h-auto"
+          style={{ overflow: 'visible' }}
+        >
+          {/* Definiciones — filtros de sombra para hover */}
+          <defs>
+            {COLORS.map((c, i) => (
+              <filter key={i} id={`glow-${i}`} x="-30%" y="-30%" width="160%" height="160%">
+                <feDropShadow dx="0" dy="6" stdDeviation="8" floodColor={c} floodOpacity="0.45" />
+              </filter>
+            ))}
+          </defs>
+
+          {/* Eje Y */}
+          <line x1={MARGIN_L} y1="10" x2={MARGIN_L} y2={AXIS_Y}
+            stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
+          {/* Eje X */}
+          <line x1={MARGIN_L} y1={AXIS_Y} x2={SVG_W - MARGIN_R} y2={AXIS_Y}
+            stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
 
           {/* Grid horizontal */}
-          {[0.25, 0.5, 0.75, 1].map((pct, i) => (
-            <g key={i}>
-              <line
-                x1="40" y1={H + 15 - pct * H}
-                x2={W + 50} y2={H + 15 - pct * H}
-                stroke="#f1f5f9" strokeWidth="1.5" strokeDasharray="4 4"
-              />
-              <text x="34" y={H + 15 - pct * H + 4} textAnchor="end"
-                style={{ fontSize: '9px', fill: '#94a3b8', fontWeight: 600 }}>
-                {Math.round(pct * 100)}%
-              </text>
-            </g>
-          ))}
-
-          {/* Barras */}
-          {opciones.map((op, i) => {
-            const bH = getBarH(op, i);
-            const x = 40 + gap + i * (BAR_W + gap);
-            const y = H + 15 - bH;
-            const color = COLORS[i % COLORS.length];
+          {[0.25, 0.5, 0.75, 1].map((pct) => {
+            const lineY = AXIS_Y - pct * H;
             return (
-              <g key={op}>
-                <rect x={x + 3} y={y + 5} width={BAR_W} height={bH} rx="8" fill={color} opacity="0.10" />
-                <rect x={x} y={y} width={BAR_W} height={bH} rx="8" fill={color} opacity="0.85" />
-                <rect x={x + 5} y={y + 5} width={BAR_W - 10} height="6" rx="3" fill="rgba(255,255,255,0.22)" />
-                <rect x={x} y={y - 22} width={BAR_W} height="18" rx="6" fill={color} opacity="0.12" />
-                <text x={x + BAR_W / 2} y={y - 9} textAnchor="middle"
-                  style={{ fontSize: '10px', fontWeight: 800, fill: color }}>
-                  {getBarLabel(op)}
+              <g key={pct}>
+                <line x1={MARGIN_L} y1={lineY} x2={SVG_W - MARGIN_R} y2={lineY}
+                  stroke="#f1f5f9" strokeWidth="1.5" strokeDasharray="5 5" />
+                <text x={MARGIN_L - 6} y={lineY + 4} textAnchor="end"
+                  style={{ fontSize: '12px', fill: '#94a3b8', fontWeight: 600 }}>
+                  {Math.round(pct * 100)}%
                 </text>
-                <text
-                  x={x + BAR_W / 2} y={H + 32} textAnchor="middle"
-                  style={{ fontSize: tipo === 'valoracion' ? '13px' : '10px', fontWeight: 700, fill: '#374151' }}
+              </g>
+            );
+          })}
+
+          {/* ── Barras ── */}
+          {opciones.map((op, i) => {
+            const bH      = getBarH(op, i);
+            const x       = MARGIN_L + gap + i * (BAR_W + gap);
+            const barTop  = AXIS_Y - bH;
+            const cx      = x + BAR_W / 2;           // center-x of the bar
+            const color   = COLORS[i % COLORS.length];
+            const colorLt = COLORS_LITE[i % COLORS_LITE.length];
+            const isHov   = hoveredBar === i;
+
+            // Real data label
+            const votes = hasRealData ? (results[op] || 0) : null;
+            const pctStr = votes !== null ? `${Math.round((votes / totalVotes) * 100)}%` : null;
+
+            return (
+              <g key={op}
+                onMouseEnter={() => setHoveredBar(i)}
+                onMouseLeave={() => setHoveredBar(null)}
+                style={{ cursor: 'pointer' }}
+              >
+                {/* Hover background glow area */}
+                {isHov && (
+                  <rect
+                    x={x - 8} y={barTop - 8}
+                    width={BAR_W + 16} height={bH + 8}
+                    rx="14" fill={color} opacity="0.08"
+                  />
+                )}
+
+                {/* Drop shadow rect */}
+                <rect x={x + 4} y={barTop + 8} width={BAR_W} height={bH}
+                  rx="12" fill={color} opacity={isHov ? 0.18 : 0.1} />
+
+                {/* Main bar — lifts 6px on hover */}
+                <rect
+                  x={x} y={isHov ? barTop - 6 : barTop}
+                  width={BAR_W} height={bH}
+                  rx="12"
+                  fill={color}
+                  opacity={isHov ? 1 : 0.82}
+                  filter={isHov ? `url(#glow-${i % COLORS.length})` : undefined}
+                  style={{ transition: 'y 0.18s ease, opacity 0.18s ease' }}
+                />
+
+                {/* Inner shine strip */}
+                <rect
+                  x={x + 8} y={isHov ? barTop - 6 + 8 : barTop + 8}
+                  width={BAR_W - 16} height="12" rx="6"
+                  fill="rgba(255,255,255,0.30)"
+                  style={{ transition: 'y 0.18s ease' }}
+                />
+
+                {/* ── Tooltip on hover ── */}
+                {isHov && (
+                  <g>
+                    {/* Tooltip bubble */}
+                    <rect
+                      x={cx - 52} y={barTop - 50}
+                      width="104" height="38" rx="10"
+                      fill="#0f172a" opacity="0.93"
+                    />
+                    {/* Arrow */}
+                    <polygon
+                      points={`${cx - 7},${barTop - 13} ${cx + 7},${barTop - 13} ${cx},${barTop - 4}`}
+                      fill="#0f172a" opacity="0.93"
+                    />
+                    {/* Option name */}
+                    <text x={cx} y={barTop - 32} textAnchor="middle"
+                      style={{ fontSize: '11px', fontWeight: 700, fill: '#94a3b8' }}>
+                      {op.length > 22 ? op.slice(0, 20) + '…' : op}
+                    </text>
+                    {/* Value or "Vista previa" */}
+                    <text x={cx} y={barTop - 17} textAnchor="middle"
+                      style={{ fontSize: '13px', fontWeight: 900, fill: 'white' }}>
+                      {pctStr
+                        ? `${votes} votos · ${pctStr}`
+                        : hasRealData ? '0 votos' : 'Vista previa'}
+                    </text>
+                  </g>
+                )}
+
+                {/* Value badge above bar (real data, not hovered) */}
+                {pctStr && !isHov && (
+                  <g>
+                    <rect x={cx - 28} y={barTop - 26} width="56" height="20" rx="7"
+                      fill={colorLt} />
+                    <text x={cx} y={barTop - 12} textAnchor="middle"
+                      style={{ fontSize: '11px', fontWeight: 800, fill: color }}>
+                      {pctStr}
+                    </text>
+                  </g>
+                )}
+
+                {/* ── X-axis label — horizontal, wrapped in foreignObject ── */}
+                <foreignObject
+                  x={x - 6}
+                  y={AXIS_Y + 10}
+                  width={BAR_W + 12}
+                  height={LABEL_H - 14}
                 >
-                  {op.length > 9 ? op.slice(0, 8) + '…' : op}
-                </text>
+                  <div
+                    xmlns="http://www.w3.org/1999/xhtml"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'center',
+                      textAlign: 'center',
+                      fontFamily: 'inherit',
+                      fontSize: tipo === 'valoracion' ? '15px' : '12px',
+                      fontWeight: 700,
+                      color: isHov ? color : '#374151',
+                      lineHeight: '1.35',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'break-word',
+                      padding: '0 2px',
+                      transition: 'color 0.2s',
+                    }}
+                  >
+                    {op}
+                  </div>
+                </foreignObject>
               </g>
             );
           })}
         </svg>
 
-        {/* Badge de tipo + estado real */}
-        <div className="flex justify-center mt-1">
-          <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-widest ${
-            isPublished && totalVotes > 0
-              ? 'bg-emerald-100 text-emerald-600'
-              : 'bg-slate-100 text-slate-500'
-          }`}>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></svg>
-            {tipo === 'si_no' ? 'Sí / No' : tipo === 'valoracion' ? 'Valoración 1-5' : 'Opción múltiple'}
-            {isPublished && totalVotes > 0
-              ? ` · ${totalVotes} respuesta${totalVotes !== 1 ? 's' : ''} en vivo`
-              : ' · Vista previa · Las respuestas aparecerán al publicar'}
-          </span>
-        </div>
+        {/* Live counter */}
+        {hasRealData && (
+          <div className="flex justify-center mt-1">
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              {totalVotes} respuesta{totalVotes !== 1 ? 's' : ''} en vivo
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
 
 /** Tarjeta contenedora para cada sección de inputs */
 function DataCard({ icon, title, color, children }) {
