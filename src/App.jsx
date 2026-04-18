@@ -13,6 +13,61 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = supabaseUrl ? createClient(supabaseUrl, supabaseKey) : null;
 
+/* ═══════════════════════════════════════════════════════════════════
+   FASE 1 — Estructuras de Datos Propuestas para el Motor de Encuestas
+   ═══════════════════════════════════════════════════════════════════
+
+   ┌─────────────────────────────────────────────────────────────────┐
+   │  Respondent — Encuestado                                        │
+   │                                                                 │
+   │  Estado que identifica a quien responde la encuesta.            │
+   │  Se captura en <SurveyEntry /> y se eleva a App.jsx.            │
+   │                                                                 │
+   │  {                                                              │
+   │    nombre:          string,  // Nombre completo del encuestado  │
+   │    identificacion:  string   // Número de documento             │
+   │  }                                                              │
+   └─────────────────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────────────────┐
+   │  Survey — Encuesta                                              │
+   │                                                                 │
+   │  Estructura flexible que soporta dos tipos de encuesta:         │
+   │    • 'general'     → itera sobre preguntas estándar             │
+   │                       (radio, checkbox, text) en SurveyRunner   │
+   │    • 'set_theory'  → renderiza diagramas de Venn + Gauss-Jordan │
+   │                                                                 │
+   │  {                                                              │
+   │    id:       string,                    // UUID o slug único     │
+   │    titulo:   string,                    // Título visible        │
+   │    tipo:     'general' | 'set_theory',  // Discriminador        │
+   │    preguntas: Array<Question>           // Solo para 'general'  │
+   │  }                                                              │
+   │                                                                 │
+   │  Question (tipo 'general'):                                     │
+   │  {                                                              │
+   │    id:       string,                          // Clave única     │
+   │    texto:    string,                          // Enunciado       │
+   │    tipo:     'radio' | 'checkbox' | 'text',   // Input type     │
+   │    opciones: string[]   // Requerido para radio y checkbox       │
+   │  }                                                              │
+   └─────────────────────────────────────────────────────────────────┘
+*/
+
+/**
+ * Estado inicial del encuestado (Respondent).
+ * Úsalo con useState en App.jsx:
+ *   const [respondent, setRespondent] = useState(INITIAL_RESPONDENT);
+ */
+const INITIAL_RESPONDENT = {
+  nombre: '',
+  identificacion: '',
+};
+
+function createSurvey(id, titulo, tipo = 'general', preguntas = []) {
+  return { id, titulo, tipo, preguntas };
+}
+
 /* ─────────────────────── SVG ICONS (inline) ─────────────────────── */
 const IconUsers = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -70,7 +125,7 @@ const IconInfo = () => (
 
 /* ─────────────────────── MAIN APP ─────────────────────── */
 function App() {
-  const [activeTab, setActiveTab] = useState('names'); // 'names' | 'data' | 'history'
+  const [activeTab, setActiveTab] = useState('nueva'); // 'nueva' | 'history'
 
   const [surveyMeta, setSurveyMeta] = useState({
     title: '',
@@ -104,9 +159,88 @@ function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResults, setAnalysisResults] = useState(null); // Resultados extendidos de la IA
 
+  // ─── Encuesta publicada + resultados en tiempo real ───
+  const [publishedSurvey, setPublishedSurvey] = useState(null); // { id, url }
+  const [showPreview, setShowPreview] = useState(false);
+  const [surveyResults, setSurveyResults] = useState({}); // { opcion: count }
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  // ─── Motor de encuesta general ───
+  const [activeSurveyMode, setActiveSurveyMode] = useState('general'); // 'general' | 'set_theory'
+  const [generalSurvey, setGeneralSurvey] = useState({
+    titulo: '',
+    descripcion: '',
+    pregunta: '',
+    tipo: 'si_no',          // 'si_no' | 'valoracion' | 'multiple'
+    opcionesCustom: ['Opción A', 'Opción B', 'Opción C'],
+  });
+  const getOpcionesForType = (tipo, custom) => {
+    if (tipo === 'si_no') return ['Sí', 'No'];
+    if (tipo === 'valoracion') return ['1 ★', '2 ★', '3 ★', '4 ★', '5 ★'];
+    return custom.filter(o => o.trim() !== '').slice(0, 4);
+  };
+
+  // ─── Polling de resultados en tiempo real ───
+  useEffect(() => {
+    if (!publishedSurvey?.id || !supabase) return;
+    const fetchResults = async () => {
+      const { data } = await supabase
+        .from('respuestas_encuestas')
+        .select('respuesta')
+        .eq('encuesta_id', publishedSurvey.id);
+      if (data) {
+        const counts = {};
+        data.forEach(r => { counts[r.respuesta] = (counts[r.respuesta] || 0) + 1; });
+        setSurveyResults(counts);
+      }
+    };
+    fetchResults();
+    const interval = setInterval(fetchResults, 5000);
+    return () => clearInterval(interval);
+  }, [publishedSurvey?.id]);
+
+  // ─── Publicar encuesta en Supabase ───
+  const handlePublishSurvey = async () => {
+    if (!generalSurvey.titulo.trim()) {
+      setStatus({ type: 'error', message: 'El título de la encuesta es obligatorio.' });
+      return;
+    }
+    if (!generalSurvey.pregunta.trim()) {
+      setStatus({ type: 'error', message: 'La pregunta es obligatoria.' });
+      return;
+    }
+    if (!supabase) {
+      setStatus({ type: 'error', message: 'Configura las variables de Supabase en .env.local' });
+      return;
+    }
+    setStatus({ type: 'loading', message: 'Publicando encuesta...' });
+    const opciones = getOpcionesForType(generalSurvey.tipo, generalSurvey.opcionesCustom);
+    const { data, error } = await supabase
+      .from('encuestas_generales')
+      .insert([{
+        titulo: generalSurvey.titulo.trim(),
+        descripcion: generalSurvey.descripcion.trim(),
+        pregunta: generalSurvey.pregunta.trim(),
+        tipo: generalSurvey.tipo,
+        opciones,
+        activa: true,
+      }])
+      .select()
+      .single();
+    if (error) {
+      setStatus({ type: 'error', message: `Error al publicar: ${error.message}` });
+      return;
+    }
+    const surveyUrl = `${window.location.origin}/survey/${data.id}`;
+    setPublishedSurvey({ id: data.id, url: surveyUrl });
+    setSurveyResults({});
+    setStatus({ type: 'success', message: '¡Encuesta publicada y disponible!' });
+    setTimeout(() => setStatus({ type: '', message: '' }), 4000);
+  };
+
   // ─── IA: Procesar descripción con Groq ───
   const handleAiProcess = async () => {
-    if (!surveyMeta.description) {
+    if (!generalSurvey.descripcion) {
       alert("Por favor, ingresa el enunciado del problema en la descripción.");
       return;
     }
@@ -184,7 +318,7 @@ VALIDACIÓN FINAL antes de responder:
           },
           {
             role: "user",
-            content: surveyMeta.description
+            content: generalSurvey.descripcion
           }
         ],
         model: "llama-3.1-8b-instant",
@@ -361,7 +495,7 @@ VALIDACIÓN FINAL antes de responder:
   };
 
   const handleClearData = () => {
-    // Reinicia los inputs numéricos
+    // Reinicia los inputs numéricos (set theory)
     setInputs({
       Total: '', none: '', totalA: '', totalB: '', totalC: '',
       intAB: '', intAC: '', intBC: '', triple: ''
@@ -371,6 +505,19 @@ VALIDACIÓN FINAL antes de responder:
     setVarNames({ A: '', B: '', C: '' });
     setReport([]);
     setDeducedFields([]);
+    // Reinicia la encuesta general
+    setGeneralSurvey({
+      titulo: '',
+      descripcion: '',
+      pregunta: '',
+      tipo: 'si_no',
+      opcionesCustom: ['Opción A', 'Opción B', 'Opción C'],
+    });
+    setAnalysisResults(null);
+    setPublishedSurvey(null);
+    setShowPreview(false);
+    setStatus({ type: 'success', message: '¡Formulario reiniciado!' });
+    setTimeout(() => setStatus({ type: '', message: '' }), 2500);
   };
 
   // ─── handleValidate — NO MODIFICADO ───
@@ -598,6 +745,17 @@ VALIDACIÓN FINAL antes de responder:
       {/* ══════════════════ LEFT PANEL — Light Venn (reference style) ══════════════════ */}
       <div className="flex-1 flex flex-col bg-white relative min-h-[60vh] lg:min-h-0">
 
+        {activeSurveyMode === 'general' ? (
+          <GeneralSurveyCanvas
+            titulo={generalSurvey.titulo}
+            descripcion={generalSurvey.descripcion}
+            pregunta={generalSurvey.pregunta}
+            tipo={generalSurvey.tipo}
+            opciones={getOpcionesForType(generalSurvey.tipo, generalSurvey.opcionesCustom)}
+            results={surveyResults}
+            isPublished={!!publishedSurvey}
+          />
+        ) : (<>
         {/* Header — title + description stacked, centred */}
         <header className="relative z-10 flex flex-col items-center text-center px-8 pt-8 pb-2">
           {/* Big gradient title */}
@@ -830,6 +988,7 @@ VALIDACIÓN FINAL antes de responder:
             </div>
           </div>
         )}
+        </>)}
       </div>
 
       {/* ══════════════════ RIGHT PANEL — Smart Panel ══════════════════ */}
@@ -850,9 +1009,8 @@ VALIDACIÓN FINAL antes de responder:
         {/* Tabs */}
         <div className="flex border-b border-slate-100 px-2 pt-1">
           {[
-            { id: 'names', label: 'Definir Nombres' },
-            { id: 'data', label: 'Totales del Problema' },
-            { id: 'history', label: 'Cargar Historial' },
+            { id: 'nueva', label: 'Crear Encuesta' },
+            { id: 'history', label: 'Historial' },
           ].map(tab => (
             <button
               key={tab.id}
@@ -870,168 +1028,7 @@ VALIDACIÓN FINAL antes de responder:
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar px-5 py-5">
 
-          {/* ── TAB: Definir Nombres ── */}
-          {activeTab === 'names' && (
-            <div className="space-y-4 fade-in">
-              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-base">📝</span>
-                  <h4 className="font-black text-slate-800 text-sm">Datos de la Encuesta</h4>
-                </div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Título del Estudio</label>
-                <input
-                  type="text"
-                  placeholder="Ej: Hábitos de Consumo 2026"
-                  value={surveyMeta.title}
-                  onChange={e => setSurveyMeta(prev => ({ ...prev, title: e.target.value }))}
-                  className="w-full px-3 py-2.5 mb-3 border border-slate-200 bg-white text-slate-900 font-semibold rounded-xl text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none placeholder-slate-300 shadow-sm"
-                />
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Descripción</label>
-                <textarea
-                  rows="7"
-                  placeholder="Ej: En una encuesta a 150 personas, 80 prefieren A, 70 prefieren B, 60 prefieren C, 30 eligen A y B..."
-                  value={surveyMeta.description}
-                  onChange={e => setSurveyMeta(prev => ({ ...prev, description: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-slate-200 bg-white text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-teal-400 focus:outline-none placeholder-slate-300 shadow-sm resize-none"
-                />
-                <div className="flex justify-end mt-3">
-                  <button
-                    onClick={handleAiProcess}
-                    disabled={isAnalyzing}
-                    className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 shadow-sm
-        ${isAnalyzing
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
-                      }`}
-                  >
-                    {isAnalyzing ? "Analizando..." : " Solución del ejercicio"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* ── TAB: Totales del Problema (4 cards) ── */}
-          {activeTab === 'data' && (
-            <div className="space-y-3 fade-in">
-              {/* Progress */}
-              <div className="mb-1">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs text-slate-400 font-medium">{progressPct}% Completado</span>
-                  <span className="text-xs text-slate-400">{filledCount}/{allInputKeys.length} campos</span>
-                </div>
-                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-500 progress-shimmer"
-                    style={{ width: `${progressPct}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Card 1 — Público Encuestado */}
-              <DataCard icon={<IconUsers />} title="Público Encuestado" color="slate">
-                <SmartInputField
-                  label="Muestra Total"
-                  fieldKey="U"
-                  value={inputs.U}
-                  onChange={v => handleInputChange('U', v)}
-                  isDeduced={deducedFields.includes('U')}
-                  badge={<span className="text-slate-400"><IconUsers /></span>}
-                  onMouseEnter={() => setHoveredRegion('none')}
-                  onMouseLeave={() => setHoveredRegion(null)}
-                />
-                <SmartInputField
-                  label="Ninguna de las opciones"
-                  fieldKey="none"
-                  value={inputs.none}
-                  onChange={v => handleInputChange('none', v)}
-                  isDeduced={deducedFields.includes('none')}
-                  badge={<IconCheck />}
-                  onMouseEnter={() => setHoveredRegion('none')}
-                  onMouseLeave={() => setHoveredRegion(null)}
-                />
-              </DataCard>
-
-              {/* Card 2 — Valores Totales */}
-              <DataCard icon={<IconBarChart />} title="Valores Totales" color="blue">
-                <SmartInputField
-                  label={`TOTAL ${varNames.A || 'A'}`}
-                  fieldKey="totalA"
-                  value={inputs.totalA}
-                  onChange={v => handleInputChange('totalA', v)}
-                  isDeduced={deducedFields.includes('totalA')}
-                  badge={<span className="font-black text-blue-600 text-xs">A</span>}
-                  onMouseEnter={() => setHoveredRegion('onlyA')}
-                  onMouseLeave={() => setHoveredRegion(null)}
-                />
-                <SmartInputField
-                  label={`TOTAL ${varNames.B || 'B'}`}
-                  fieldKey="totalB"
-                  value={inputs.totalB}
-                  onChange={v => handleInputChange('totalB', v)}
-                  isDeduced={deducedFields.includes('totalB')}
-                  badge={<span className="font-black text-emerald-600 text-xs">B</span>}
-                  onMouseEnter={() => setHoveredRegion('onlyB')}
-                  onMouseLeave={() => setHoveredRegion(null)}
-                />
-                <SmartInputField
-                  label={`TOTAL ${varNames.C || 'C'}`}
-                  fieldKey="totalC"
-                  value={inputs.totalC}
-                  onChange={v => handleInputChange('totalC', v)}
-                  isDeduced={deducedFields.includes('totalC')}
-                  badge={<span className="font-black text-slate-500 text-xs">C</span>}
-                  onMouseEnter={() => setHoveredRegion('onlyC')}
-                  onMouseLeave={() => setHoveredRegion(null)}
-                />
-              </DataCard>
-
-              {/* Card 3 — Cruces Totales */}
-              <DataCard icon={<IconCross />} title="Cruces Totales" color="emerald">
-                <SmartInputField
-                  label={`Total Ambos: ${varNames.A || 'A'} y ${varNames.B || 'B'}`}
-                  fieldKey="intAB"
-                  value={inputs.intAB}
-                  onChange={v => handleInputChange('intAB', v)}
-                  isDeduced={deducedFields.includes('intAB')}
-                  onMouseEnter={() => setHoveredRegion('AB')}
-                  onMouseLeave={() => setHoveredRegion(null)}
-                />
-                <SmartInputField
-                  label={`Total Ambos: ${varNames.B || 'B'} y ${varNames.C || 'C'}`}
-                  fieldKey="intBC"
-                  value={inputs.intBC}
-                  onChange={v => handleInputChange('intBC', v)}
-                  isDeduced={deducedFields.includes('intBC')}
-                  onMouseEnter={() => setHoveredRegion('BC')}
-                  onMouseLeave={() => setHoveredRegion(null)}
-                />
-                <SmartInputField
-                  label={`Total Ambos: ${varNames.A || 'A'} y ${varNames.C || 'C'}`}
-                  fieldKey="intAC"
-                  value={inputs.intAC}
-                  onChange={v => handleInputChange('intAC', v)}
-                  isDeduced={deducedFields.includes('intAC')}
-                  onMouseEnter={() => setHoveredRegion('AC')}
-                  onMouseLeave={() => setHoveredRegion(null)}
-                />
-              </DataCard>
-
-              {/* Card 4 — Núcleo */}
-              <DataCard icon={<IconTarget />} title="Núcleo" color="amber">
-                <SmartInputField
-                  label="Elige las 3 opciones"
-                  fieldKey="triple"
-                  value={inputs.triple}
-                  onChange={v => handleInputChange('triple', v)}
-                  isDeduced={deducedFields.includes('triple')}
-                  badge={<IconCheck />}
-                  onMouseEnter={() => setHoveredRegion('ABC')}
-                  onMouseLeave={() => setHoveredRegion(null)}
-                />
-              </DataCard>
-            </div>
-          )}
 
           {/* ── TAB: Historial ── */}
           {activeTab === 'history' && (
@@ -1088,6 +1085,199 @@ VALIDACIÓN FINAL antes de responder:
               )}
             </div>
           )}
+
+          {/* ── TAB: Crear Encuesta ── */}
+          {activeTab === 'nueva' && (
+            <div className="space-y-4 fade-in">
+
+              {/* ── Datos del Estudio ── */}
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-base">📝</span>
+                  <h4 className="font-black text-slate-800 text-sm">Datos del Estudio</h4>
+                </div>
+
+                {/* Título del estudio — se refleja en vivo en el panel izquierdo */}
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Título del Estudio</label>
+                <input
+                  id="general-titulo"
+                  type="text"
+                  placeholder="Ej: Hábitos de Consumo 2026"
+                  value={generalSurvey.titulo}
+                  onChange={e => setGeneralSurvey(prev => ({ ...prev, titulo: e.target.value }))}
+                  className="w-full px-3 py-2.5 mb-3 border border-slate-200 bg-white text-slate-900 font-semibold rounded-xl text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none placeholder-slate-300 shadow-sm"
+                />
+
+                {/* Descripción — se refleja en vivo como tarjeta debajo del título */}
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Descripción</label>
+                <textarea
+                  id="general-descripcion"
+                  rows="5"
+                  placeholder="Ej: En una encuesta a 150 personas sobre preferencias de estudio..."
+                  value={generalSurvey.descripcion}
+                  onChange={e => setGeneralSurvey(prev => ({ ...prev, descripcion: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-slate-200 bg-white text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-teal-400 focus:outline-none placeholder-slate-300 shadow-sm resize-none"
+                />
+
+                {/* Botón Solución del ejercicio — llama a la IA */}
+                <div className="flex justify-end mt-3">
+                  <button
+                    onClick={handleAiProcess}
+                    disabled={isAnalyzing}
+                    className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 shadow-sm
+                      ${isAnalyzing
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
+                      }`}
+                  >
+                    {isAnalyzing ? "Analizando..." : "Solución del ejercicio"}
+                  </button>
+                </div>
+              </div>
+
+              {/* ── Configurar Pregunta ── */}
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-base">📊</span>
+                  <h4 className="font-black text-slate-800 text-sm">Configurar Pregunta</h4>
+                </div>
+
+                {/* Pregunta */}
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Pregunta</label>
+                <textarea
+                  id="general-pregunta"
+                  rows="3"
+                  placeholder="Ej: ¿Prefieres estudiar de forma presencial o virtual?"
+                  value={generalSurvey.pregunta}
+                  onChange={e => setGeneralSurvey(prev => ({ ...prev, pregunta: e.target.value }))}
+                  className="w-full px-3 py-2.5 mb-4 border border-slate-200 bg-white text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-teal-400 focus:outline-none placeholder-slate-300 shadow-sm resize-none"
+                />
+
+                {/* Tipo de respuesta */}
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Tipo de respuesta</label>
+                <div className="grid grid-cols-3 gap-1.5 mb-4">
+                  {[
+                    { value: 'si_no', label: 'Sí / No', icon: '✓' },
+                    { value: 'valoracion', label: 'Valoración', icon: '★' },
+                    { value: 'multiple', label: 'Múltiple', icon: '≡' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setGeneralSurvey(prev => ({ ...prev, tipo: opt.value }))}
+                      className={`py-2.5 px-1 rounded-xl text-xs font-bold transition-all border flex flex-col items-center gap-0.5 ${
+                        generalSurvey.tipo === opt.value
+                          ? 'bg-teal-500 text-white border-teal-500 shadow-sm'
+                          : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <span className="text-sm">{opt.icon}</span>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Opciones personalizadas (solo tipo múltiple) */}
+                {generalSurvey.tipo === 'multiple' && (
+                  <div className="mb-4">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Opciones (máx. 4)</label>
+                    <div className="space-y-1.5">
+                      {generalSurvey.opcionesCustom.map((op, idx) => (
+                        <div key={idx} className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            placeholder={`Opción ${idx + 1}`}
+                            value={op}
+                            onChange={e => {
+                              const newOpts = [...generalSurvey.opcionesCustom];
+                              newOpts[idx] = e.target.value;
+                              setGeneralSurvey(prev => ({ ...prev, opcionesCustom: newOpts }));
+                            }}
+                            className="flex-1 px-3 py-2 border border-slate-200 bg-white text-slate-800 text-sm rounded-lg focus:ring-2 focus:ring-teal-400 focus:outline-none placeholder-slate-300"
+                          />
+                          {generalSurvey.opcionesCustom.length > 2 && (
+                            <button
+                              onClick={() => setGeneralSurvey(prev => ({ ...prev, opcionesCustom: prev.opcionesCustom.filter((_, i) => i !== idx) }))}
+                              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-400 hover:bg-red-50 transition-all"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      {generalSurvey.opcionesCustom.length < 4 && (
+                        <button
+                          onClick={() => setGeneralSurvey(prev => ({ ...prev, opcionesCustom: [...prev.opcionesCustom, ''] }))}
+                          className="text-xs font-bold text-teal-600 hover:text-teal-700 flex items-center gap-1 mt-1"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                          Agregar opción
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Previsualizar encuesta ── */}
+              <button
+                id="general-preview-btn"
+                onClick={() => setShowPreview(prev => !prev)}
+                className={`w-full py-3 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
+                  showPreview
+                    ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                    : 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/20'
+                }`}
+              >
+                {showPreview ? (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                    Ocultar vista previa
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                    Vista previa de la encuesta
+                  </>
+                )}
+              </button>
+
+              {/* ── Preview inline: cómo verán los encuestados ── */}
+              {showPreview && (
+                <div className="bg-white rounded-2xl border-2 border-dashed border-teal-200 p-5 space-y-4 fade-in">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-6 h-6 rounded-md bg-teal-100 flex items-center justify-center">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-teal-600"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                    </span>
+                    <span className="text-xs font-bold text-teal-600 uppercase tracking-widest">Así verán los encuestados</span>
+                  </div>
+
+                  {/* Pregunta preview */}
+                  <p className="text-sm font-bold text-slate-800 leading-relaxed">
+                    {generalSurvey.pregunta || 'Tu pregunta aparecerá aquí...'}
+                  </p>
+
+                  {/* Opciones preview */}
+                  <div className="space-y-2">
+                    {getOpcionesForType(generalSurvey.tipo, generalSurvey.opcionesCustom).map((op, i) => (
+                      <label key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-teal-50 hover:border-teal-300 transition-all cursor-pointer group">
+                        {generalSurvey.tipo === 'checkbox' || generalSurvey.tipo === 'multiple' ? (
+                          <span className="w-4 h-4 rounded border-2 border-slate-300 group-hover:border-teal-400 transition-colors shrink-0" />
+                        ) : (
+                          <span className="w-4 h-4 rounded-full border-2 border-slate-300 group-hover:border-teal-400 transition-colors shrink-0" />
+                        )}
+                        <span className="text-sm font-semibold text-slate-700 group-hover:text-teal-700 transition-colors">{op}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* Disabled submit button */}
+                  <button disabled className="w-full py-2.5 bg-teal-500/50 text-white rounded-xl text-sm font-bold cursor-not-allowed">
+                    Enviar respuesta (solo vista previa)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── Bottom action bar ── */}
@@ -1101,16 +1291,59 @@ VALIDACIÓN FINAL antes de responder:
             </div>
           )}
 
-          {activeTab === 'data' && (
-            <button
-              id="btn-save"
-              onClick={handleSave}
-              disabled={status.type === 'loading'}
-              className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-slate-900/20 disabled:opacity-60"
-            >
-              <IconSave />
-              {status.type === 'loading' ? 'Guardando...' : 'Guardar encuesta'}
-            </button>
+          {activeTab === 'nueva' && (
+            <>
+              {/* ── Panel de encuesta publicada ── */}
+              {publishedSurvey && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-3 fade-in">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
+                    </span>
+                    <span className="text-xs font-black text-emerald-700 uppercase tracking-widest">Encuesta activa</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white rounded-xl border border-emerald-200 px-3 py-2">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-emerald-500 shrink-0"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                    <span className="flex-1 text-[10px] font-mono text-slate-600 truncate">{publishedSurvey.url}</span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(publishedSurvey.url);
+                        setLinkCopied(true);
+                        setTimeout(() => setLinkCopied(false), 2500);
+                      }}
+                      className={`shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg transition-all ${
+                        linkCopied ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                      }`}
+                    >
+                      {linkCopied ? '✓ Copiado' : 'Copiar'}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-400">
+                      {Object.values(surveyResults).reduce((a, b) => a + b, 0)} respuesta(s) · actualiza cada 5s
+                    </span>
+                    <a
+                      href={publishedSurvey.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                    >
+                      Abrir como encuestado
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                    </a>
+                  </div>
+                </div>
+              )}
+              <button
+                id="btn-publish"
+                onClick={handlePublishSurvey}
+                disabled={status.type === 'loading'}
+                className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg active:scale-[0.98] disabled:opacity-60 bg-teal-600 hover:bg-teal-700 text-white shadow-teal-600/25"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
+                {status.type === 'loading' ? 'Publicando...' : publishedSurvey ? 'Republicar encuesta' : 'Publicar encuesta'}
+              </button>
+            </>
           )}
 
         </div>
@@ -1121,6 +1354,134 @@ VALIDACIÓN FINAL antes de responder:
 }
 
 /* ─────────────────────── SUB-COMPONENTS ─────────────────────── */
+
+/** Gráfico de barras para encuestas generales (vista previa del panel izquierdo) */
+function GeneralSurveyCanvas({ titulo, descripcion, pregunta, tipo, opciones, results = {}, isPublished = false }) {
+  const COLORS = ['#0d9488', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444'];
+  const W = 400, H = 200;
+  const count = opciones.length || 1;
+  const BAR_W = Math.max(28, Math.floor((W - 60) / count) - 14);
+  const gap = Math.floor((W - 60 - BAR_W * count) / (count + 1));
+  const DEMO_H = [0.65, 0.35, 0.80, 0.45, 0.55];
+
+  // Calcular alturas reales cuando hay resultados
+  const totalVotes = Object.values(results).reduce((a, b) => a + b, 0);
+  const getBarH = (op, i) => {
+    if (isPublished && totalVotes > 0) {
+      return Math.max(8, Math.round(((results[op] || 0) / totalVotes) * H));
+    }
+    return Math.max(12, Math.round(DEMO_H[i % DEMO_H.length] * H));
+  };
+  const getBarLabel = (op) => {
+    if (isPublished && totalVotes > 0) {
+      const v = results[op] || 0;
+      return `${v} (${Math.round((v / totalVotes) * 100)}%)`;
+    }
+    return isPublished ? '0 resp.' : 'Vista previa';
+  };
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center px-6 pt-8 pb-8">
+      {/* Título — se refleja en vivo */}
+      <h1
+        className="text-3xl font-black tracking-tight uppercase leading-none text-center"
+        style={{
+          background: 'linear-gradient(135deg, #1e293b 0%, #475569 100%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
+        }}
+      >
+        {titulo || 'Nueva Encuesta'}
+      </h1>
+
+      {/* Descripción — tarjeta que se refleja en vivo desde el panel derecho */}
+      {descripcion && (
+        <div className="max-w-2xl w-full mx-auto mt-4 bg-slate-50/50 border border-slate-200 rounded-2xl p-5">
+          <div className="flex items-center justify-center gap-1.5 mb-2 text-slate-400">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
+            <span className="text-xs font-bold uppercase tracking-widest">Descripción</span>
+          </div>
+          <div className="max-h-40 overflow-y-auto custom-scrollbar">
+            <p className="text-sm text-slate-600 font-medium leading-relaxed text-center whitespace-pre-line">{descripcion}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Pregunta */}
+      {pregunta && (
+        <div className="max-w-md w-full mx-auto mt-4 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-center">
+          <p className="text-sm text-slate-600 font-semibold leading-relaxed">{pregunta}</p>
+        </div>
+      )}
+
+      {/* Gráfico de barras SVG */}
+      <div className="relative w-full max-w-lg mt-6">
+        <svg viewBox={`0 0 ${W + 60} ${H + 70}`} className="w-full h-auto">
+          {/* Ejes */}
+          <line x1="40" y1="10" x2="40" y2={H + 15} stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
+          <line x1="40" y1={H + 15} x2={W + 50} y2={H + 15} stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
+
+          {/* Grid horizontal */}
+          {[0.25, 0.5, 0.75, 1].map((pct, i) => (
+            <g key={i}>
+              <line
+                x1="40" y1={H + 15 - pct * H}
+                x2={W + 50} y2={H + 15 - pct * H}
+                stroke="#f1f5f9" strokeWidth="1.5" strokeDasharray="4 4"
+              />
+              <text x="34" y={H + 15 - pct * H + 4} textAnchor="end"
+                style={{ fontSize: '9px', fill: '#94a3b8', fontWeight: 600 }}>
+                {Math.round(pct * 100)}%
+              </text>
+            </g>
+          ))}
+
+          {/* Barras */}
+          {opciones.map((op, i) => {
+            const bH = getBarH(op, i);
+            const x = 40 + gap + i * (BAR_W + gap);
+            const y = H + 15 - bH;
+            const color = COLORS[i % COLORS.length];
+            return (
+              <g key={op}>
+                <rect x={x + 3} y={y + 5} width={BAR_W} height={bH} rx="8" fill={color} opacity="0.10" />
+                <rect x={x} y={y} width={BAR_W} height={bH} rx="8" fill={color} opacity="0.85" />
+                <rect x={x + 5} y={y + 5} width={BAR_W - 10} height="6" rx="3" fill="rgba(255,255,255,0.22)" />
+                <rect x={x} y={y - 22} width={BAR_W} height="18" rx="6" fill={color} opacity="0.12" />
+                <text x={x + BAR_W / 2} y={y - 9} textAnchor="middle"
+                  style={{ fontSize: '10px', fontWeight: 800, fill: color }}>
+                  {getBarLabel(op)}
+                </text>
+                <text
+                  x={x + BAR_W / 2} y={H + 32} textAnchor="middle"
+                  style={{ fontSize: tipo === 'valoracion' ? '13px' : '10px', fontWeight: 700, fill: '#374151' }}
+                >
+                  {op.length > 9 ? op.slice(0, 8) + '…' : op}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Badge de tipo + estado real */}
+        <div className="flex justify-center mt-1">
+          <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-widest ${
+            isPublished && totalVotes > 0
+              ? 'bg-emerald-100 text-emerald-600'
+              : 'bg-slate-100 text-slate-500'
+          }`}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></svg>
+            {tipo === 'si_no' ? 'Sí / No' : tipo === 'valoracion' ? 'Valoración 1-5' : 'Opción múltiple'}
+            {isPublished && totalVotes > 0
+              ? ` · ${totalVotes} respuesta${totalVotes !== 1 ? 's' : ''} en vivo`
+              : ' · Vista previa · Las respuestas aparecerán al publicar'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** Tarjeta contenedora para cada sección de inputs */
 function DataCard({ icon, title, color, children }) {
