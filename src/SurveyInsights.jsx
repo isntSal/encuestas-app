@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Groq from 'groq-sdk';
+import { Heading, Text, Label } from './components/Typography';
+import { TX } from './styles/textStyles';
 
 const groq = import.meta.env.VITE_GROQ_API_KEY
   ? new Groq({ apiKey: import.meta.env.VITE_GROQ_API_KEY, dangerouslyAllowBrowser: true })
@@ -50,10 +52,8 @@ export default function SurveyInsights({ titulo, pregunta, results = {} }) {
   useEffect(() => {
     if (!hasResults) { setInsight(''); return; }
     const key = JSON.stringify(results);
-    if (key === prevResultsRef.current) return; // no real change
+    if (key === prevResultsRef.current) return;
     prevResultsRef.current = key;
-
-    // Only auto-refresh if we already have an insight (user already clicked once)
     if (insight) generateInsight();
   }, [results]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -87,7 +87,7 @@ export default function SurveyInsights({ titulo, pregunta, results = {} }) {
   return (
     <div className="w-full max-w-2xl mx-auto mt-4 px-4 fade-in">
       <div
-        className="rounded-3xl overflow-hidden border border-slate-200 shadow-lg"
+        className="rounded-3xl overflow-hidden border border-white/10 shadow-[0_0_15px_rgba(0,255,255,0.1)]"
         style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #1a1f35 100%)' }}
       >
         {/* Header */}
@@ -100,8 +100,9 @@ export default function SurveyInsights({ titulo, pregunta, results = {} }) {
               </svg>
             </span>
             <div>
+              {/* Eyebrow label using TX directly (dark card context) */}
               <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#818cf8' }}>Análisis IA</p>
-              <h3 className="text-sm font-black text-white leading-tight">Resumen Ejecutivo</h3>
+              <Heading as="h3" className="!text-white">Resumen Ejecutivo</Heading>
             </div>
           </div>
 
@@ -138,7 +139,7 @@ export default function SurveyInsights({ titulo, pregunta, results = {} }) {
               </div>
             );
           })}
-          <span className="ml-auto text-[10px] font-semibold" style={{ color: '#475569' }}>
+          <span className={[TX.caption, 'ml-auto'].join(' ')} style={{ color: '#475569' }}>
             {totalVotes} respuesta{totalVotes !== 1 ? 's' : ''}
           </span>
         </div>
@@ -149,7 +150,7 @@ export default function SurveyInsights({ titulo, pregunta, results = {} }) {
         {/* Content area */}
         <div className="px-6 py-5 min-h-[72px] flex items-center">
           {error ? (
-            <p className="text-xs font-semibold text-red-400">{error}</p>
+            <Text variant="body" className="!text-red-400">{error}</Text>
           ) : loading ? (
             <div className="flex items-center gap-3">
               <div className="flex gap-1">
@@ -158,23 +159,22 @@ export default function SurveyInsights({ titulo, pregunta, results = {} }) {
                     style={{ animation: `bounce 1.2s ${i * 0.2}s infinite` }} />
                 ))}
               </div>
-              <p className="text-sm font-medium" style={{ color: '#94a3b8' }}>Generando resumen ejecutivo...</p>
+              <Text variant="secondary" className="!text-slate-400/80">Generando resumen ejecutivo...</Text>
             </div>
           ) : insight ? (
-            <p className="text-sm font-medium leading-relaxed" style={{ color: '#cbd5e1', letterSpacing: '0.01em' }}>
-              {insight}
-            </p>
+            /* AI-generated text — insight variant for generous line-height */
+            <Text variant="insight" className="!text-slate-300">{insight}</Text>
           ) : (
-            <p className="text-sm" style={{ color: '#475569' }}>
+            <Text variant="body" className="!text-slate-500">
               Presiona <strong style={{ color: '#818cf8' }}>Generar análisis</strong> para obtener un resumen ejecutivo basado en los votos actuales.
-            </p>
+            </Text>
           )}
         </div>
 
         {/* Footer */}
         {insight && (
           <div className="px-6 pb-4">
-            <p className="text-[10px]" style={{ color: '#334155' }}>
+            <p className={TX.caption} style={{ color: '#334155' }}>
               Generado con Groq · llama-3.1-8b-instant · Basado en {totalVotes} resp. al momento del análisis
             </p>
           </div>

@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Heading, Text, Label, ErrorMessage, HelperText } from './components/Typography';
+import { inputValid, inputError, btnPrimary } from './styles/textStyles';
 
 /**
  * SurveyEntry — Puerta de enlace
@@ -57,12 +59,10 @@ export default function SurveyEntry({ surveyTitle = 'Encuesta', onSubmit }) {
 
           {/* Título */}
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-tight">
-              {surveyTitle}
-            </h1>
-            <p className="mt-2 text-sm text-slate-400 font-medium">
+            <Heading as="h1">{surveyTitle}</Heading>
+            <Text variant="secondary" center className="mt-2">
               Por favor identifícate antes de continuar.
-            </p>
+            </Text>
           </div>
 
           {/* Formulario */}
@@ -70,12 +70,9 @@ export default function SurveyEntry({ surveyTitle = 'Encuesta', onSubmit }) {
 
             {/* Campo — Nombre completo */}
             <div>
-              <label
-                htmlFor="entry-nombre"
-                className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5"
-              >
+              <Label htmlFor="entry-nombre" required>
                 Nombre completo
-              </label>
+              </Label>
               <input
                 id="entry-nombre"
                 type="text"
@@ -86,29 +83,18 @@ export default function SurveyEntry({ surveyTitle = 'Encuesta', onSubmit }) {
                   setNombre(e.target.value);
                   if (errors.nombre) setErrors((prev) => ({ ...prev, nombre: '' }));
                 }}
-                className={`w-full px-4 py-3 rounded-xl border bg-slate-50 text-slate-900 font-semibold text-sm
-                  placeholder-slate-300 transition-all duration-150 focus:outline-none focus:bg-white
-                  ${errors.nombre
-                    ? 'border-red-300 focus:ring-2 focus:ring-red-200'
-                    : 'border-slate-200 focus:ring-2 focus:ring-teal-400 focus:border-teal-400'
-                  }`}
+                aria-describedby={errors.nombre ? 'error-nombre' : undefined}
+                aria-invalid={!!errors.nombre}
+                className={errors.nombre ? inputError : inputValid}
               />
-              {errors.nombre && (
-                <p className="mt-1.5 text-xs font-semibold text-red-500 flex items-center gap-1">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-                  {errors.nombre}
-                </p>
-              )}
+              <ErrorMessage message={errors.nombre} id="error-nombre" />
             </div>
 
             {/* Campo — Documento de identidad */}
             <div>
-              <label
-                htmlFor="entry-identificacion"
-                className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5"
-              >
+              <Label htmlFor="entry-identificacion" required>
                 Número de documento
-              </label>
+              </Label>
               <input
                 id="entry-identificacion"
                 type="text"
@@ -120,28 +106,18 @@ export default function SurveyEntry({ surveyTitle = 'Encuesta', onSubmit }) {
                   setIdentificacion(e.target.value);
                   if (errors.identificacion) setErrors((prev) => ({ ...prev, identificacion: '' }));
                 }}
-                className={`w-full px-4 py-3 rounded-xl border bg-slate-50 text-slate-900 font-semibold text-sm
-                  placeholder-slate-300 transition-all duration-150 focus:outline-none focus:bg-white
-                  ${errors.identificacion
-                    ? 'border-red-300 focus:ring-2 focus:ring-red-200'
-                    : 'border-slate-200 focus:ring-2 focus:ring-teal-400 focus:border-teal-400'
-                  }`}
+                aria-describedby={errors.identificacion ? 'error-identificacion' : undefined}
+                aria-invalid={!!errors.identificacion}
+                className={errors.identificacion ? inputError : inputValid}
               />
-              {errors.identificacion && (
-                <p className="mt-1.5 text-xs font-semibold text-red-500 flex items-center gap-1">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-                  {errors.identificacion}
-                </p>
-              )}
+              <ErrorMessage message={errors.identificacion} id="error-identificacion" />
             </div>
 
             {/* Submit */}
             <button
               id="entry-submit"
               type="submit"
-              className="w-full mt-2 py-3.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98]
-                text-white font-bold text-sm rounded-2xl transition-all duration-150
-                shadow-lg shadow-slate-900/20 flex items-center justify-center gap-2"
+              className={btnPrimary}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14" /><path d="M12 5l7 7-7 7" />
@@ -153,9 +129,9 @@ export default function SurveyEntry({ surveyTitle = 'Encuesta', onSubmit }) {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-xs text-slate-400 mt-6 font-medium">
+        <HelperText center icon className="text-center mt-6">
           Tus datos son confidenciales y se usan únicamente con fines académicos.
-        </p>
+        </HelperText>
 
       </div>
     </div>

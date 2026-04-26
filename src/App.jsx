@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Groq from "groq-sdk";
 import SurveyInsights from './SurveyInsights';
+import CyberBarChart from './CyberBarChart';
 
 // Inicializamos Groq fuera del componente para no recrearlo en cada render
 const groq = new Groq({
@@ -632,14 +633,14 @@ function App() {
 
   /* ────────────────────────────── RENDER ────────────────────────────── */
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row overflow-y-auto bg-white font-sans">
+    <div className="min-h-screen flex flex-col lg:flex-row bg-transparent font-sans overflow-hidden">
 
       {/* ══════════════════ LEFT PANEL — Light Venn (reference style) ══════════════════ */}
-      <div className="flex-1 flex flex-col bg-white relative min-h-[60vh] lg:min-h-0">
+      <div className="flex-1 flex flex-col bg-transparent relative overflow-y-auto custom-scrollbar">
 
         {activeSurveyMode === 'general' ? (
           <>
-            <GeneralSurveyCanvas
+            <CyberBarChart
               titulo={generalSurvey.titulo}
               descripcion={generalSurvey.descripcion}
               pregunta={generalSurvey.pregunta}
@@ -666,7 +667,7 @@ function App() {
 
             {/* Description — styled card with scroll cap */}
             {surveyMeta.description && (
-              <div className="max-w-2xl w-full mx-auto mt-4 bg-slate-50/50 border border-slate-200 rounded-2xl p-5">
+              <div className="max-w-2xl w-full mx-auto mt-4 glass-panel rounded-2xl p-5">
                 {/* Card header */}
                 <div className="flex items-center justify-center gap-1.5 mb-2 text-slate-400">
                   <IconInfo />
@@ -863,14 +864,14 @@ function App() {
       </div>
 
       {/* ══════════════════ RIGHT PANEL — Smart Panel ══════════════════ */}
-      <div className="w-full lg:max-w-sm bg-white flex flex-col shadow-none lg:shadow-2xl lg:shadow-black/20 border-t border-slate-100 lg:border-t-0 relative z-10">
+      <div className="w-full lg:max-w-sm flex flex-col relative z-10 border-t border-slate-300 lg:border-t-0 overflow-y-auto" style={{ background: 'rgba(255,255,255,0.4)', backdropFilter: 'blur(28px)', WebkitBackdropFilter: 'blur(28px)', boxShadow: '-4px 0 24px rgba(0,0,0,0.05)' }}>
 
         {/* Panel header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-          <h2 className="font-black text-slate-900 text-lg tracking-tight">¿Qué tienes en mente?</h2>
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-300">
+          <h2 className="font-black text-lg tracking-tight text-slate-800">¿Qué tienes en mente?</h2>
           <button
             onClick={handleClearData}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-all"
             title="Reiniciar todo"
           >
             <IconTrash />
@@ -878,7 +879,7 @@ function App() {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-100 px-2 pt-1">
+        <div className="flex border-b border-slate-300 px-2 pt-1">
           {[
             { id: 'nueva', label: 'Crear Encuesta' },
             { id: 'history', label: 'Historial' },
@@ -886,9 +887,9 @@ function App() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 pb-2.5 pt-1 text-xs font-semibold transition-all border-b-2 ${activeTab === tab.id
-                ? 'border-teal-500 text-teal-600'
-                : 'border-transparent text-slate-400 hover:text-slate-600'
+              className={`flex-1 pb-2.5 pt-1 text-xs font-bold transition-all border-b-2 ${activeTab === tab.id
+                ? 'border-slate-900 text-black'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
                 }`}
             >
               {tab.label}
@@ -908,7 +909,7 @@ function App() {
                 <h4 className="font-black text-slate-800 text-sm">Mis Encuestas Publicadas</h4>
                 <button
                   onClick={fetchHistory}
-                  className="flex items-center gap-1 text-xs font-bold text-teal-600 hover:text-teal-700 transition-colors"
+                  className="flex items-center gap-1 text-xs font-bold text-slate-900 hover:text-black transition-colors"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
                   Refrescar
@@ -916,12 +917,12 @@ function App() {
               </div>
 
               {loadingHistory ? (
-                <div className="py-10 text-center text-slate-400 text-sm animate-pulse">Cargando encuestas...</div>
+                <div className="py-10 text-center text-slate-500 text-sm animate-pulse">Cargando encuestas...</div>
               ) : history.length === 0 ? (
-                <div className="py-10 text-center text-slate-400 text-sm bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                <div className="py-10 text-center text-slate-600 text-sm glass-panel rounded-2xl space-y-2">
                   <p className="text-2xl">📋</p>
                   <p>No has publicado encuestas aún.</p>
-                  <p className="text-[10px]">Crea una en el tab <strong>Crear Encuesta</strong>.</p>
+                  <p className="text-[10px]">Crea una en el tab <strong className="text-slate-900">Crear Encuesta</strong>.</p>
                 </div>
               ) : (
                 history.map((survey) => {
@@ -932,15 +933,16 @@ function App() {
                       key={survey.id}
                       onClick={() => loadSavedSurvey(survey)}
                       className={`relative p-4 rounded-2xl border transition-all cursor-pointer group ${isActive
-                        ? 'bg-teal-50 border-teal-300 shadow-sm shadow-teal-100'
-                        : 'bg-slate-50 border-slate-100 hover:bg-white hover:shadow-md hover:border-slate-200'
+                        ? 'border-slate-400 bg-slate-100/80 shadow-md'
+                        : 'border-slate-300 hover:border-slate-400 hover:shadow-sm'
                         }`}
+                      style={{ background: isActive ? 'rgba(239, 246, 255, 0.7)' : 'rgba(255,255,255,0.5)' }}
                     >
                       {/* Indicador activo */}
                       {isActive && (
                         <span className="absolute top-3 left-3 flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500" />
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-500" />
                         </span>
                       )}
 
@@ -948,31 +950,31 @@ function App() {
                       <button
                         onClick={(e) => handleDeleteGeneralSurvey(survey.id, e)}
                         title="Eliminar encuesta"
-                        className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
+                        className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-100 transition-all opacity-0 group-hover:opacity-100"
                       >
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
                       </button>
 
                       {/* Contenido */}
-                      <h5 className={`font-bold text-sm mb-0.5 pr-8 ${isActive ? 'text-teal-700 pl-4' : 'text-slate-800 group-hover:text-teal-600'} transition-colors`}>
+                      <h5 className={`font-bold text-sm mb-0.5 pr-8 ${isActive ? 'text-black pl-4' : 'text-slate-800 group-hover:text-black'} transition-colors`}>
                         {survey.titulo}
                       </h5>
-                      <p className="text-[10px] text-slate-400 mb-2 truncate pr-4">
+                      <p className="text-[10px] text-slate-600 mb-2 truncate pr-4">
                         {survey.pregunta}
                       </p>
                       <div className="flex gap-1.5 flex-wrap items-center">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${survey.tipo === 'si_no' ? 'bg-blue-100 text-blue-700'
-                          : survey.tipo === 'valoracion' ? 'bg-amber-100 text-amber-700'
-                            : 'bg-purple-100 text-purple-700'
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${survey.tipo === 'si_no' ? 'bg-slate-200 text-black border border-slate-300'
+                          : survey.tipo === 'valoracion' ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                            : 'bg-purple-100 text-purple-700 border border-purple-200'
                           }`}>
                           {survey.tipo === 'si_no' ? 'Sí/No' : survey.tipo === 'valoracion' ? 'Valoración' : 'Múltiple'}
                         </span>
                         {isActive && totalResp !== null && (
-                          <span className="bg-teal-100 text-teal-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
                             {totalResp} resp. en vivo
                           </span>
                         )}
-                        <span className="text-[10px] text-slate-300 ml-auto">
+                        <span className="text-[10px] text-slate-600 ml-auto">
                           {new Date(survey.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
                         </span>
                       </div>
@@ -988,32 +990,34 @@ function App() {
             <div className="space-y-4 fade-in">
 
               {/* ── Datos del Estudio ── */}
-              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+              <div className="rounded-2xl p-4 glass-panel border-slate-300">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-base">📝</span>
                   <h4 className="font-black text-slate-800 text-sm">Datos del Estudio</h4>
                 </div>
 
                 {/* Título del estudio — se refleja en vivo en el panel izquierdo */}
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Título del Estudio</label>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-1">Título del Estudio</label>
                 <input
                   id="general-titulo"
                   type="text"
                   placeholder="Ej: Hábitos de Consumo 2026"
                   value={generalSurvey.titulo}
                   onChange={e => setGeneralSurvey(prev => ({ ...prev, titulo: e.target.value }))}
-                  className="w-full px-3 py-2.5 mb-3 border border-slate-200 bg-white text-slate-900 font-semibold rounded-xl text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none placeholder-slate-300 shadow-sm"
+                  className="w-full px-3 py-2.5 mb-3 border border-slate-300 font-semibold rounded-xl text-sm focus:ring-2 focus:ring-slate-400 focus:outline-none placeholder-slate-400 transition-all text-slate-800"
+                  style={{ background: 'rgba(255,255,255,0.7)' }}
                 />
 
                 {/* Descripción — se refleja en vivo como tarjeta debajo del título */}
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Descripción</label>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-1">Descripción</label>
                 <textarea
                   id="general-descripcion"
                   rows="5"
                   placeholder="Ej: Descripción del estudio..."
                   value={generalSurvey.descripcion}
                   onChange={e => setGeneralSurvey(prev => ({ ...prev, descripcion: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-slate-200 bg-white text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-teal-400 focus:outline-none placeholder-slate-300 shadow-sm resize-none"
+                  className="w-full px-3 py-2.5 border border-slate-300 text-slate-800 text-sm rounded-xl focus:ring-2 focus:ring-slate-400 focus:outline-none placeholder-slate-400 transition-all resize-none"
+                  style={{ background: 'rgba(255,255,255,0.7)' }}
                 />
 
                 {/* Botón Solución del ejercicio — llama a la IA */}
@@ -1023,8 +1027,8 @@ function App() {
                     disabled={isAnalyzing}
                     className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 shadow-sm
                       ${isAnalyzing
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
+                        ? 'bg-slate-200 text-slate-500 cursor-not-allowed border border-slate-300'
+                        : 'bg-slate-900 text-white hover:bg-black active:scale-95'
                       }`}
                   >
                     {isAnalyzing ? 'Generando...' : 'Generar Preguntas con IA'}
@@ -1034,37 +1038,37 @@ function App() {
 
               {/* ── Preguntas sugeridas por la IA ── */}
               {analysisResults && analysisResults.generatedQuestions && analysisResults.generatedQuestions.length > 0 && (
-                <div className="mt-4 rounded-2xl border border-indigo-100 overflow-hidden shadow-md" style={{ background: 'linear-gradient(135deg,#f5f3ff 0%,#ede9fe 100%)' }}>
+                <div className="mt-4 rounded-2xl border border-slate-300 overflow-hidden shadow-sm bg-slate-50/50">
                   {/* Header */}
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-indigo-100">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-300">
                     <div className="flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center shadow-sm">
+                      <span className="w-7 h-7 rounded-lg bg-slate-900 flex items-center justify-center shadow-sm">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z" /><circle cx="12" cy="15" r="2" /></svg>
                       </span>
                       <div>
-                        <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest leading-none">Copiloto IA</p>
+                        <p className="text-[10px] font-bold text-slate-900 uppercase tracking-widest leading-none">Copiloto IA</p>
                         <p className="text-xs font-black text-slate-800">Preguntas sugeridas</p>
                       </div>
                     </div>
-                    <button onClick={() => setAnalysisResults(null)} className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-white/60 transition-all">
+                    <button onClick={() => setAnalysisResults(null)} className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-all">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                     </button>
                   </div>
                   {/* Cards */}
-                  <div className="divide-y divide-indigo-100/60">
+                  <div className="divide-y divide-slate-300">
                     {analysisResults.generatedQuestions.map((q, i) => {
                       const isMultiple = q.type === 'multiple_choice';
                       const appTipo = isMultiple ? 'multiple' : 'si_no';
                       return (
-                        <div key={q.id || i} className="px-4 py-3 hover:bg-white/40 transition-colors">
+                        <div key={q.id || i} className="px-4 py-3 hover:bg-slate-100/50 transition-colors">
                           <div className="flex items-start gap-2">
-                            <span className="w-5 h-5 rounded-full bg-indigo-200 text-indigo-700 flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5">{i + 1}</span>
+                            <span className="w-5 h-5 rounded-full bg-slate-200 text-black flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5">{i + 1}</span>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold text-slate-800 leading-snug mb-1.5">{q.question}</p>
                               {Array.isArray(q.options) && q.options.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mb-2">
                                   {q.options.slice(0, 4).map((opt, j) => (
-                                    <span key={j} className="text-[10px] font-semibold text-slate-500 bg-white/70 border border-slate-200 px-1.5 py-0.5 rounded-full">{opt}</span>
+                                    <span key={j} className="text-[10px] font-semibold text-slate-500 bg-white border border-slate-200 px-1.5 py-0.5 rounded-full">{opt}</span>
                                   ))}
                                 </div>
                               )}
@@ -1075,7 +1079,7 @@ function App() {
                                   setStatus({ type: 'success', message: `Pregunta ${i + 1} aplicada ✓` });
                                   setTimeout(() => setStatus({ type: '', message: '' }), 2500);
                                 }}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all active:scale-95"
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black text-white bg-slate-900 hover:bg-black transition-all active:scale-95 shadow-sm"
                               >
                                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
                                 Usar esta pregunta
@@ -1086,33 +1090,34 @@ function App() {
                       );
                     })}
                   </div>
-                  <div className="px-4 py-2 bg-indigo-50/60 border-t border-indigo-100">
-                    <p className="text-[10px] text-indigo-400 font-medium">Toca "Usar esta pregunta" para aplicarla al formulario</p>
+                  <div className="px-4 py-2 border-t border-slate-300 bg-slate-100/50">
+                    <p className="text-[10px] text-slate-900 font-medium">Toca "Usar esta pregunta" para aplicarla al formulario</p>
                   </div>
                 </div>
               )}
 
               {/* ── Configurar Pregunta ── */}
 
-              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+              <div className="rounded-2xl p-4 glass-panel border-slate-300">
                 <div className="flex items-center gap-2 mb-4">
                   <span className="text-base">📊</span>
                   <h4 className="font-black text-slate-800 text-sm">Diseñar una Pregunta Manualmente</h4>
                 </div>
-
+                
                 {/* Pregunta */}
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Pregunta</label>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-1">Pregunta</label>
                 <textarea
                   id="general-pregunta"
                   rows="3"
                   placeholder="Ej: ¿Prefieres estudiar de forma presencial o virtual?"
                   value={generalSurvey.pregunta}
                   onChange={e => setGeneralSurvey(prev => ({ ...prev, pregunta: e.target.value }))}
-                  className="w-full px-3 py-2.5 mb-4 border border-slate-200 bg-white text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-teal-400 focus:outline-none placeholder-slate-300 shadow-sm resize-none"
+                  className="w-full px-3 py-2.5 mb-4 border border-slate-300 text-slate-800 text-sm rounded-xl focus:ring-2 focus:ring-slate-400 focus:outline-none placeholder-slate-400 transition-all resize-none"
+                  style={{ background: 'rgba(255,255,255,0.7)' }}
                 />
 
                 {/* Tipo de respuesta */}
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Tipo de respuesta</label>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-2">Tipo de respuesta</label>
                 <div className="grid grid-cols-3 gap-1.5 mb-4">
                   {[
                     { value: 'si_no', label: 'Sí / No', icon: '✓' },
@@ -1123,9 +1128,10 @@ function App() {
                       key={opt.value}
                       onClick={() => setGeneralSurvey(prev => ({ ...prev, tipo: opt.value }))}
                       className={`py-2.5 px-1 rounded-xl text-xs font-bold transition-all border flex flex-col items-center gap-0.5 ${generalSurvey.tipo === opt.value
-                        ? 'bg-teal-500 text-white border-teal-500 shadow-sm'
-                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                        ? 'text-black border-slate-400 bg-slate-100/80 shadow-sm'
+                        : 'text-slate-500 border-slate-300 hover:border-slate-400 hover:bg-slate-50/50'
                         }`}
+                      style={generalSurvey.tipo === opt.value ? { background: 'rgba(241, 245, 249, 0.8)' } : { background: 'rgba(255,255,255,0.5)' }}
                     >
                       <span className="text-sm">{opt.icon}</span>
                       {opt.label}
@@ -1136,7 +1142,7 @@ function App() {
                 {/* Opciones personalizadas (solo tipo múltiple) */}
                 {generalSurvey.tipo === 'multiple' && (
                   <div className="mb-4">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Opciones (máx. 4)</label>
+                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-2">Opciones (máx. 4)</label>
                     <div className="space-y-1.5">
                       {generalSurvey.opcionesCustom.map((op, idx) => (
                         <div key={idx} className="flex items-center gap-1.5">
@@ -1149,12 +1155,13 @@ function App() {
                               newOpts[idx] = e.target.value;
                               setGeneralSurvey(prev => ({ ...prev, opcionesCustom: newOpts }));
                             }}
-                            className="flex-1 px-3 py-2 border border-slate-200 bg-white text-slate-800 text-sm rounded-lg focus:ring-2 focus:ring-teal-400 focus:outline-none placeholder-slate-300"
+                            className="flex-1 px-3 py-2 border border-slate-300 text-slate-800 text-sm rounded-lg focus:ring-2 focus:ring-slate-400 focus:outline-none placeholder-slate-400 transition-all"
+                            style={{ background: 'rgba(255,255,255,0.7)' }}
                           />
                           {generalSurvey.opcionesCustom.length > 2 && (
                             <button
                               onClick={() => setGeneralSurvey(prev => ({ ...prev, opcionesCustom: prev.opcionesCustom.filter((_, i) => i !== idx) }))}
-                              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-400 hover:bg-red-50 transition-all"
+                               className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-100 transition-all"
                             >
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                             </button>
@@ -1164,7 +1171,7 @@ function App() {
                       {generalSurvey.opcionesCustom.length < 4 && (
                         <button
                           onClick={() => setGeneralSurvey(prev => ({ ...prev, opcionesCustom: [...prev.opcionesCustom, ''] }))}
-                          className="text-xs font-bold text-teal-600 hover:text-teal-700 flex items-center gap-1 mt-1"
+                          className="text-xs font-bold text-slate-900 hover:text-black flex items-center gap-1 mt-1"
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                           Agregar opción
@@ -1179,10 +1186,11 @@ function App() {
               <button
                 id="general-preview-btn"
                 onClick={() => setShowPreview(prev => !prev)}
-                className={`w-full py-3 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${showPreview
-                  ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
-                  : 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/20'
+                className={`w-full py-3 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 border ${showPreview
+                  ? 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200'
+                  : 'text-slate-700 border-slate-300 hover:border-slate-400 hover:bg-slate-50'
                   }`}
+                style={!showPreview ? { background: 'rgba(255,255,255,0.6)', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' } : {}}
               >
                 {showPreview ? (
                   <>
@@ -1199,12 +1207,12 @@ function App() {
 
               {/* ── Preview inline: cómo verán los encuestados ── */}
               {showPreview && (
-                <div className="bg-white rounded-2xl border-2 border-dashed border-teal-200 p-5 space-y-4 fade-in">
+                <div className="glass-panel rounded-2xl border border-dashed border-slate-400 p-5 space-y-4 fade-in">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="w-6 h-6 rounded-md bg-teal-100 flex items-center justify-center">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-teal-600"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                    <span className="w-6 h-6 rounded-md bg-slate-200 flex items-center justify-center">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-900"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                     </span>
-                    <span className="text-xs font-bold text-teal-600 uppercase tracking-widest">Así verán los encuestados</span>
+                    <span className="text-xs font-bold text-slate-900 uppercase tracking-widest">Así verán los encuestados</span>
                   </div>
 
                   {/* Pregunta preview */}
@@ -1215,19 +1223,19 @@ function App() {
                   {/* Opciones preview */}
                   <div className="space-y-2">
                     {getOpcionesForType(generalSurvey.tipo, generalSurvey.opcionesCustom).map((op, i) => (
-                      <label key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-teal-50 hover:border-teal-300 transition-all cursor-pointer group">
+                      <label key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 hover:border-slate-400 transition-all cursor-pointer group">
                         {generalSurvey.tipo === 'checkbox' || generalSurvey.tipo === 'multiple' ? (
-                          <span className="w-4 h-4 rounded border-2 border-slate-300 group-hover:border-teal-400 transition-colors shrink-0" />
+                          <span className="w-4 h-4 rounded border-2 border-slate-400 group-hover:border-slate-500 transition-colors shrink-0" />
                         ) : (
-                          <span className="w-4 h-4 rounded-full border-2 border-slate-300 group-hover:border-teal-400 transition-colors shrink-0" />
+                          <span className="w-4 h-4 rounded-full border-2 border-slate-400 group-hover:border-slate-500 transition-colors shrink-0" />
                         )}
-                        <span className="text-sm font-semibold text-slate-700 group-hover:text-teal-700 transition-colors">{op}</span>
+                        <span className="text-sm font-semibold text-slate-700 group-hover:text-black transition-colors">{op}</span>
                       </label>
                     ))}
                   </div>
 
                   {/* Disabled submit button */}
-                  <button disabled className="w-full py-2.5 bg-teal-500/50 text-white rounded-xl text-sm font-bold cursor-not-allowed">
+                  <button disabled className="w-full py-2.5 text-slate-400 rounded-xl text-sm font-bold cursor-not-allowed border border-slate-200" style={{ background: 'rgba(255,255,255,0.5)' }}>
                     Enviar respuesta (solo vista previa)
                   </button>
                 </div>
@@ -1237,11 +1245,11 @@ function App() {
         </div>
 
         {/* ── Bottom action bar ── */}
-        <div className="px-5 pb-6 pt-3 border-t border-slate-100 space-y-2.5 shrink-0">
+        <div className="px-5 pb-6 pt-3 border-t border-white/5 space-y-2.5 shrink-0">
           {status.message && (
-            <div className={`text-xs font-semibold px-3 py-2 rounded-lg text-center fade-in ${status.type === 'error' ? 'bg-red-50 text-red-600 border border-red-100' :
-              status.type === 'loading' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                'bg-emerald-50 text-emerald-700 border border-emerald-100'
+            <div className={`text-xs font-semibold px-3 py-2 rounded-lg text-center fade-in border ${status.type === 'error' ? 'bg-red-100 text-red-700 border-red-200' :
+              status.type === 'loading' ? 'bg-slate-200 text-black border-slate-300' :
+                'bg-emerald-100 text-emerald-700 border-emerald-200'
               }`}>
               {status.message}
             </div>
@@ -1251,15 +1259,15 @@ function App() {
             <>
               {/* ── Panel de encuesta publicada ── */}
               {publishedSurvey && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-3 fade-in">
+                <div className="glass-panel rounded-2xl p-4 space-y-3 fade-in border border-slate-300 shadow-sm" style={{ background: 'rgba(239, 246, 255, 0.5)' }}>
                   <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
+                    <span className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(15, 23, 42, 0.1)', boxShadow: '0 0 8px rgba(15, 23, 42, 0.2)' }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0f172a" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
                     </span>
-                    <span className="text-xs font-black text-emerald-700 uppercase tracking-widest">Encuesta activa</span>
+                    <span className="text-xs font-black text-black uppercase tracking-widest">Encuesta activa</span>
                   </div>
-                  <div className="flex items-center gap-2 bg-white rounded-xl border border-emerald-200 px-3 py-2">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-emerald-500 shrink-0"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                  <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 px-3 py-2">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-500 shrink-0"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
                     <span className="flex-1 text-[10px] font-mono text-slate-600 truncate">{publishedSurvey.url}</span>
                     <button
                       onClick={() => {
@@ -1267,21 +1275,21 @@ function App() {
                         setLinkCopied(true);
                         setTimeout(() => setLinkCopied(false), 2500);
                       }}
-                      className={`shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg transition-all ${linkCopied ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                      className={`shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg transition-all border ${linkCopied ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-slate-100 text-slate-600 border-slate-200 hover:text-slate-900 hover:border-slate-400'
                         }`}
                     >
                       {linkCopied ? '✓ Copiado' : 'Copiar'}
                     </button>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400">
+                    <span className="text-[10px] font-bold text-slate-500">
                       {Object.values(surveyResults).reduce((a, b) => a + b, 0)} respuesta(s) · actualiza cada 5s
                     </span>
                     <a
                       href={publishedSurvey.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                      className="text-[10px] font-bold text-slate-900 hover:text-black flex items-center gap-1"
                     >
                       Abrir como encuestado
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
@@ -1293,7 +1301,8 @@ function App() {
                 id="btn-publish"
                 onClick={handlePublishSurvey}
                 disabled={status.type === 'loading'}
-                className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg active:scale-[0.98] disabled:opacity-60 bg-teal-600 hover:bg-teal-700 text-white shadow-teal-600/25"
+                className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-60 text-white border border-slate-500 shadow-sm"
+                style={{ background: 'linear-gradient(135deg, #0f172a, #3b82f6)' }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                 {status.type === 'loading' ? 'Publicando...' : publishedSurvey ? 'Republicar encuesta' : 'Publicar encuesta'}
@@ -1551,13 +1560,13 @@ function GeneralSurveyCanvas({ titulo, descripcion, pregunta, tipo, opciones, re
 function DataCard({ icon, title, color, children }) {
   const palette = {
     slate: 'border-slate-100   bg-slate-50',
-    blue: 'border-blue-50     bg-blue-50/30',
+    blue: 'border-slate-100     bg-slate-100/30',
     emerald: 'border-emerald-50  bg-emerald-50/30',
     amber: 'border-amber-50    bg-amber-50/30',
   };
   const iconPalette = {
     slate: 'text-slate-500   bg-slate-100',
-    blue: 'text-blue-600    bg-blue-100',
+    blue: 'text-slate-900    bg-slate-200',
     emerald: 'text-emerald-600 bg-emerald-100',
     amber: 'text-amber-600   bg-amber-100',
   };

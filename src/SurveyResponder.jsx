@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
+import { Heading, Text, Label, ErrorMessage, HelperText } from './components/Typography';
+import { inputValid, inputError, btnTeal, btnSecondary, btnDisabled } from './styles/textStyles';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -98,7 +100,7 @@ export default function SurveyResponder() {
     <Screen>
       <div className="flex flex-col items-center gap-4">
         <div className="w-10 h-10 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
-        <p className="text-slate-500 text-sm font-semibold">Cargando encuesta...</p>
+        <Text variant="secondary">Cargando encuesta...</Text>
       </div>
     </Screen>
   );
@@ -112,8 +114,8 @@ export default function SurveyResponder() {
             <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
         </div>
-        <h1 className="text-xl font-black text-slate-800">Encuesta no disponible</h1>
-        <p className="text-slate-500 text-sm">{error}</p>
+        <Heading as="h1" center>Encuesta no disponible</Heading>
+        <Text variant="secondary" center>{error}</Text>
       </div>
     </Screen>
   );
@@ -129,15 +131,15 @@ export default function SurveyResponder() {
           </svg>
         </div>
         <div>
-          <h1 className="text-2xl font-black text-slate-800 mb-2">¡Gracias, {identity.nombre.split(' ')[0]}!</h1>
-          <p className="text-slate-500 text-sm leading-relaxed">Tu respuesta ha sido registrada correctamente.</p>
+          <Heading as="h1" center className="mb-2">¡Gracias, {identity.nombre.split(' ')[0]}!</Heading>
+          <Text variant="secondary" center>Tu respuesta ha sido registrada correctamente.</Text>
         </div>
         <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4 shadow-sm space-y-1">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tu respuesta</p>
           <p className="text-lg font-black text-teal-600">{selected}</p>
           <p className="text-[10px] text-slate-400">Registrado como: {identity.nombre}</p>
         </div>
-        <p className="text-xs text-slate-400">Puedes cerrar esta ventana.</p>
+        <Text variant="secondary" center className="text-xs">Puedes cerrar esta ventana.</Text>
       </div>
       <style>{`@keyframes pop { 0%{transform:scale(0)} 80%{transform:scale(1.05)} 100%{transform:scale(1)} }`}</style>
     </Screen>
@@ -152,12 +154,9 @@ export default function SurveyResponder() {
         {/* Header */}
         <div className="text-center space-y-1">
           <p className="text-xs font-bold text-teal-600 uppercase tracking-widest">Encuesta</p>
-          <h1 className="text-2xl font-black tracking-tight"
-            style={{ background: 'linear-gradient(135deg,#1e293b 0%,#475569 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
-            {survey.titulo}
-          </h1>
+          <Heading as="h1" gradient center>{survey.titulo}</Heading>
           {survey.descripcion && (
-            <p className="text-sm text-slate-500 leading-relaxed pt-1 max-w-sm mx-auto">{survey.descripcion}</p>
+            <Text variant="secondary" center className="pt-1 max-w-sm mx-auto">{survey.descripcion}</Text>
           )}
         </div>
 
@@ -179,65 +178,57 @@ export default function SurveyResponder() {
           <form onSubmit={handleIdentitySubmit} className="bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-200/60 p-6 space-y-5">
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Paso 1 de 2</p>
-              <p className="text-base font-bold text-slate-800">Identifícate antes de responder</p>
-              <p className="text-xs text-slate-400 mt-0.5">Tus datos son confidenciales y solo los ve el creador de la encuesta.</p>
+              <Heading as="h2">Identifícate antes de responder</Heading>
+              <HelperText icon className="mt-1">
+                Tus datos son confidenciales y solo los ve el creador de la encuesta.
+              </HelperText>
             </div>
 
             <div className="h-px bg-slate-100" />
 
             {/* Nombre */}
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-1.5">
-                Nombre completo
-              </label>
+              <Label htmlFor="responder-nombre" required>Nombre completo</Label>
               <input
+                id="responder-nombre"
                 type="text"
                 autoComplete="name"
                 placeholder="Ej: María Fernanda López"
                 value={identity.nombre}
                 onChange={e => setIdentity(prev => ({ ...prev, nombre: e.target.value }))}
-                className={`w-full px-4 py-3 rounded-2xl border-2 text-sm font-semibold text-slate-800 bg-slate-50 placeholder-slate-300 focus:outline-none focus:bg-white transition-all ${
-                  identityErrors.nombre ? 'border-red-300 focus:border-red-400' : 'border-slate-200 focus:border-teal-400'
-                }`}
+                aria-describedby={identityErrors.nombre ? 'error-resp-nombre' : undefined}
+                aria-invalid={!!identityErrors.nombre}
+                className={identityErrors.nombre ? inputError : inputValid}
               />
-              {identityErrors.nombre && (
-                <p className="text-xs text-red-500 font-semibold mt-1.5 flex items-center gap-1">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  {identityErrors.nombre}
-                </p>
-              )}
+              <ErrorMessage message={identityErrors.nombre} id="error-resp-nombre" />
             </div>
 
             {/* Documento */}
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-1.5">
-                Número de documento
-              </label>
+              <Label htmlFor="responder-doc" required>Número de documento</Label>
               <input
+                id="responder-doc"
                 type="text"
                 inputMode="numeric"
                 autoComplete="off"
                 placeholder="Ej: 1020304050"
                 value={identity.identificacion}
                 onChange={e => setIdentity(prev => ({ ...prev, identificacion: e.target.value.replace(/\D/g, '') }))}
-                className={`w-full px-4 py-3 rounded-2xl border-2 text-sm font-mono font-bold text-slate-800 bg-slate-50 placeholder-slate-300 focus:outline-none focus:bg-white tracking-widest transition-all ${
-                  identityErrors.identificacion ? 'border-red-300 focus:border-red-400' : 'border-slate-200 focus:border-teal-400'
-                }`}
+                aria-describedby={identityErrors.identificacion ? 'error-resp-doc' : undefined}
+                aria-invalid={!!identityErrors.identificacion}
+                className={[
+                  identityErrors.identificacion ? inputError : inputValid,
+                  'font-mono tracking-widest',
+                ].join(' ')}
               />
-              {identityErrors.identificacion && (
-                <p className="text-xs text-red-500 font-semibold mt-1.5 flex items-center gap-1">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  {identityErrors.identificacion}
-                </p>
-              )}
+              <ErrorMessage message={identityErrors.identificacion} id="error-resp-doc" />
             </div>
 
-            <button
-              type="submit"
-              className="w-full py-3.5 rounded-2xl font-black text-sm bg-teal-600 hover:bg-teal-700 text-white shadow-lg shadow-teal-600/25 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-            >
+            <button type="submit" className={btnTeal}>
               Continuar a la pregunta
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+              </svg>
             </button>
           </form>
         )}
@@ -246,8 +237,10 @@ export default function SurveyResponder() {
         {step === 'question' && (
           <form onSubmit={handleSubmit} className="bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-200/60 p-6 space-y-5">
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Paso 2 de 2 · Hola, {identity.nombre.split(' ')[0]}</p>
-              <p className="text-base font-bold text-slate-800 leading-snug">{survey.pregunta}</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                Paso 2 de 2 · Hola, {identity.nombre.split(' ')[0]}
+              </p>
+              <Heading as="h2">{survey.pregunta}</Heading>
             </div>
 
             <div className="h-px bg-slate-100" />
@@ -256,7 +249,7 @@ export default function SurveyResponder() {
             <div className="space-y-2.5">
               {survey.tipo === 'valoracion' ? (
                 <div>
-                  <p className="text-xs font-semibold text-slate-400 mb-3">Selecciona tu puntuación</p>
+                  <Text variant="secondary" className="mb-3">Selecciona tu puntuación</Text>
                   <div className="flex justify-center gap-3">
                     {opciones.map((op) => {
                       const starNum = parseInt(op);
@@ -300,17 +293,19 @@ export default function SurveyResponder() {
               )}
             </div>
 
-            {submitError && <p className="text-xs font-semibold text-red-500 text-center">{submitError}</p>}
+            {submitError && (
+              <p className="text-xs font-semibold text-red-500 text-center">{submitError}</p>
+            )}
 
             <div className="flex gap-2">
-              <button type="button" onClick={() => setStep('identity')}
-                className="px-4 py-3.5 rounded-2xl font-bold text-sm text-slate-400 bg-slate-100 hover:bg-slate-200 transition-all active:scale-[0.98]">
+              <button type="button" onClick={() => setStep('identity')} className={btnSecondary}>
                 ← Atrás
               </button>
-              <button type="submit" disabled={submitting || !selected}
-                className={`flex-1 py-3.5 rounded-2xl font-black text-sm transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98] ${
-                  selected && !submitting ? 'bg-teal-600 hover:bg-teal-700 text-white shadow-lg shadow-teal-600/25' : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                }`}>
+              <button
+                type="submit"
+                disabled={submitting || !selected}
+                className={`flex-1 ${selected && !submitting ? btnTeal : btnDisabled}`}
+              >
                 {submitting ? (
                   <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Enviando...</>
                 ) : (
@@ -321,7 +316,9 @@ export default function SurveyResponder() {
           </form>
         )}
 
-        <p className="text-center text-[10px] text-slate-400 font-medium">Motor de Encuestas · Respuesta confidencial</p>
+        <Text variant="secondary" center className="text-[10px]">
+          Motor de Encuestas · Respuesta confidencial
+        </Text>
       </div>
     </Screen>
   );
