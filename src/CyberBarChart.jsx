@@ -8,7 +8,7 @@ import * as THREE from 'three';
    ══════════════════════════════════════════════════════════════ */
 
 const BAR_COLORS  = ['#0f172a', '#10b981', '#6366f1', '#f59e0b', '#06b6d4'];
-const DEMO_H      = [0.65, 0.35, 0.82, 0.48, 0.57];
+const DEMO_H      = [0, 0, 0, 0, 0];
 
 /* ──── Interactive Bee ──── */
 function InteractiveBee() {
@@ -170,18 +170,17 @@ function GlassBar({ position, targetHeight, color, label, isHovered, onHover, on
       />
 
       {/* Label below bar */}
-      <Html position={[0, -0.28, 0]} center distanceFactor={9} style={{ pointerEvents: 'none', userSelect: 'none' }}>
+      <Html position={[0, -0.45, 0]} center distanceFactor={9} style={{ pointerEvents: 'none', userSelect: 'none' }}>
         <div style={{
           textAlign: 'center',
           fontFamily: 'Inter, sans-serif',
-          fontSize: '11px',
+          fontSize: '10px',
           fontWeight: 700,
           color: isHovered ? color : 'rgba(51,65,85,0.85)',
           textShadow: isHovered ? `0 0 8px ${color}` : 'none',
-          whiteSpace: 'nowrap',
-          maxWidth: '90px',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
+          whiteSpace: 'normal',
+          maxWidth: '130px',
+          lineHeight: '1.3',
           transition: 'color 0.2s',
         }}>
           {label}
@@ -317,10 +316,10 @@ export default function CyberBarChart({
   const cameraY   = 3.2 + extraBars * 0.15;  // 2→3.2  3→3.35 4→3.5  5→3.65
 
   return (
-    <div className="w-full flex flex-col bg-transparent relative">
+    <div className="w-full flex flex-col bg-transparent relative px-6">
 
       {/* ── Top text area ── */}
-      <div className="flex flex-col items-center px-6 pt-7 pb-0 gap-3">
+      <div className="flex flex-col items-center px-6 pt-7 pb-4 gap-3">
         <h1
           className="text-3xl font-black tracking-tight uppercase leading-none text-center"
           style={{
@@ -352,7 +351,7 @@ export default function CyberBarChart({
       {/* ── 3D Canvas — fixed compact size ── */}
       <div
         className="relative mx-auto w-full bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-200"
-        style={{ height: '300px', maxWidth: '680px' }}
+        style={{ height: '400px', maxWidth: '860px' }}
       >
         {/* Border glow overlay */}
         <div

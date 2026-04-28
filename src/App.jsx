@@ -306,7 +306,7 @@ function App() {
         messages: [
           {
             role: 'system',
-            content: 'Actúa como un experto en diseño de encuestas. Recibirás la descripción de un estudio. Tu tarea es devolver ÚNICAMENTE un arreglo en formato JSON válido con 3 preguntas sugeridas. Cada pregunta debe tener la estructura: { "id": string, "question": string, "type": "single_choice" | "multiple_choice", "options": string[] }.'
+            content: 'Actúa como un experto en diseño de encuestas. Recibirás la descripción de un estudio. Tu tarea es devolver ÚNICAMENTE un objeto JSON válido con una propiedad "preguntas" que contenga un arreglo de 3 preguntas sugeridas. Cada pregunta debe tener la estructura: { "id": string, "question": string, "type": "single_choice" | "multiple_choice", "options": string[] }.'
           },
           {
             role: 'user',
@@ -840,7 +840,11 @@ function App() {
                           <button
                             onClick={() => {
                               const opts = Array.isArray(q.options) && q.options.length > 1 ? q.options.slice(0, 4) : ['Opcion A', 'Opcion B', 'Opcion C'];
-                              setGeneralSurvey(prev => ({ ...prev, pregunta: q.question, tipo: appTipo, opcionesCustom: opts }));
+                              // Auto-detect chart type: 2 options → si_no, 5 options → valoracion, else multiple
+                              let detectedTipo = 'multiple';
+                              if (opts.length === 2) detectedTipo = 'si_no';
+                              else if (opts.length === 5 && opts.some(o => o.includes('★') || o.includes('⭐') || /^\d/.test(o))) detectedTipo = 'valoracion';
+                              setGeneralSurvey(prev => ({ ...prev, pregunta: q.question, tipo: detectedTipo, opcionesCustom: opts, descripcion: '' }));
                               setStatus({ type: 'success', message: 'Pregunta aplicada al formulario.' });
                               setTimeout(() => setStatus({ type: '', message: '' }), 3000);
                             }}
@@ -1075,7 +1079,11 @@ function App() {
                               <button
                                 onClick={() => {
                                   const opts = Array.isArray(q.options) && q.options.length > 1 ? q.options.slice(0, 4) : ['Opción A', 'Opción B', 'Opción C'];
-                                  setGeneralSurvey(prev => ({ ...prev, pregunta: q.question, tipo: appTipo, opcionesCustom: opts }));
+                                  // Auto-detect chart type: 2 options → si_no, 5 options → valoracion, else multiple
+                                  let detectedTipo = 'multiple';
+                                  if (opts.length === 2) detectedTipo = 'si_no';
+                                  else if (opts.length === 5 && opts.some(o => o.includes('★') || o.includes('⭐') || /^\d/.test(o))) detectedTipo = 'valoracion';
+                                  setGeneralSurvey(prev => ({ ...prev, pregunta: q.question, tipo: detectedTipo, opcionesCustom: opts, descripcion: '' }));
                                   setStatus({ type: 'success', message: `Pregunta ${i + 1} aplicada ✓` });
                                   setTimeout(() => setStatus({ type: '', message: '' }), 2500);
                                 }}
